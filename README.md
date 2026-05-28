@@ -27,7 +27,7 @@ This is the canonical "fan-out, archive everything" pattern: one source generate
 
 **Events** — every event archived to B2 with status, language chips, attendee peak, and actions:
 
-![Events view showing a grid of event cards with status badges, language chips, and listen / open / delete actions](./docs/images/library.png)
+![Events view showing a grid of event cards with status badges, language chips, and listen / open / delete actions](./docs/images/events.png)
 
 ## Agent-First Architecture
 

@@ -22,10 +22,9 @@ from app.config import settings
 from app.repo import (
     delete_file,
     delete_files_batch,
+    get_event_stats,
     get_file_metadata,
     get_presigned_url,
-    get_upload_stats,
-    list_event_prefixes,
     list_files,
 )
 from app.service.event_stats import get_event_aggregates
@@ -125,10 +124,10 @@ def get_files(prefix: str = "", limit: int = 100) -> list[FileMetadata]:
 def get_stats() -> EventStats:
     """Build the dashboard's `EventStats` envelope.
 
-    Combines bucket-wide totals from `get_upload_stats()` (`/files` parity)
+    Combines bucket-wide totals from `get_event_stats()` (`/files` parity)
     with event-specific aggregates from `service.events.get_event_aggregates()`.
     """
-    bucket = get_upload_stats()
+    bucket = get_event_stats()
     events = get_event_aggregates()
     return EventStats(
         total_events=events["total_events"],
@@ -192,29 +191,23 @@ def bulk_remove_files(keys: list[str]) -> tuple[list[str], list[dict]]:
 def get_event_activity(days: int = 7) -> list[DailyEventCount]:
     """Return daily event-creation counts for the last N days.
 
-    Source of truth is the bucket: enumerate `events/<id>/` prefixes, group
-    by the manifest's `created_at` date (falling back to the prefix's earliest
-    `LastModified` when the manifest is missing).
+    Source of truth is the bucket: today the aggregates output from
+    `service.event_stats.get_event_aggregates()` gives us total + today
+    counters, so we attribute today's events to today's bucket and leave the
+    earlier days at zero.
+
+    TODO: per-day attribution — page through each event's `event.json`
+    manifest once and bucket by `created_at`. Tracked in
+    `docs/exec-plans/tech-debt-tracker.md`.
     """
     today = datetime.now(UTC).date()
     cutoff = today - timedelta(days=days - 1)
     counts: dict[str, int] = defaultdict(int)
     durations: dict[str, int] = defaultdict(int)
 
-    # We re-derive aggregates from the events service rather than re-listing
-    # the bucket here. Today the activity chart only needs per-day counts,
-    # so the aggregates output is enough.
     events = get_event_aggregates()
-    # Spread today's events_today count onto today's bucket as a starter
-    # signal — a richer implementation would page through each event's
-    # manifest and bucket by created_at. Documented under the
-    # `tech-debt-tracker.md`.
     if events.get("events_today"):
         counts[today.isoformat()] = int(events["events_today"])
-
-    # Touch list_event_prefixes() so the function still pulls a fresh
-    # enumeration on every call (and lints clean for unused-import).
-    _ = list_event_prefixes(max_keys=1)
 
     return [
         DailyEventCount(

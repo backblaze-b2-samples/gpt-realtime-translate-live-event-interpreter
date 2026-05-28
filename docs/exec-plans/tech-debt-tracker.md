@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-03-10 -->
+<!-- last_verified: 2026-05-28 -->
 # Tech Debt Tracker
 
 Known tech debt items. Agents update this when they discover or create tech debt.
@@ -14,3 +14,6 @@ Known tech debt items. Agents update this when they discover or create tech debt
 | `humanizeBytes` duplicated in TypeScript | DRY violation | Extract to `lib/utils.ts` | Low | Open |
 | `formatDate` duplicated in TypeScript | DRY violation | Extract to `lib/utils.ts` | Low | Open |
 | No test harness for feature specs | No automated verification | Add pytest fixtures + test files per feature | Medium | Resolved (partial — tests added for upload, files, activity, errors) |
+| `service.transcripts.persist_chunks` is implemented but never called | VTT/SRT writers and the B2 path exist, but no caller drives them — the dashboard "transcripts" UI will render empty until a producer wires in. | Invoke from `service.realtime_session` on the periodic-flush cadence + the speaker-socket close path. Lands with the OpenAI Realtime adapter. | Medium | Open |
+| `service.files.get_event_activity` only buckets today's events | Last 7 days chart shows today's count and zeros for earlier days. | Page through each event's `event.json` manifest once (cap at `EVENT_ACTIVITY_LOOKBACK_DAYS`), HEAD-attribute by `created_at`. | Low | Open |
+| `docs/images/events.png` screenshot is the starter kit's library view | Visual mismatch — the README references events but the image was captured against the old `/library` UI. | Capture a fresh screenshot of `/events` once the realtime adapter lands and there's seeded data to display. | Low | Open |

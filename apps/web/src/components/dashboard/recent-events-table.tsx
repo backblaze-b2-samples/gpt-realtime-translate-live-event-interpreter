@@ -31,7 +31,7 @@ import { formatDate, formatDuration } from "@/lib/utils";
  * Sources rows from `useEvents` and renders status / source language / target
  * languages / duration / date. Replaces the starter kit's audio-asset table.
  */
-export function RecentUploadsTable() {
+export function RecentEventsTable() {
   const { data: events = [], isLoading, error, refetch } = useEvents(10);
 
   return (

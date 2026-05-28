@@ -3,7 +3,7 @@ import { DesignPrimitives } from "@/components/design/design-primitives";
 import { DesignPatterns } from "@/components/design/design-patterns";
 import { DesignAI } from "@/components/design/design-ai";
 import { DesignLoader } from "@/components/design/design-loader";
-import { DesignLibraryCard } from "@/components/design/design-library-card";
+import { DesignEventCard } from "@/components/design/design-event-card";
 
 export default function DesignPage() {
   return (
@@ -11,8 +11,9 @@ export default function DesignPage() {
       <div className="animate-fade-in border-b border-border pb-5">
         <h1 className="page-title">Design System</h1>
         <p className="text-sm text-muted-foreground mt-1.5">
-          Every token, primitive, AI element, and pattern in this starter. Use
-          this page as a living style guide as the kit grows.
+          Every token, primitive, AI element, and pattern in the
+          live-interpretation interpreter. Use this page as a living style
+          guide as the app grows.
         </p>
       </div>
       <div className="animate-fade-in-up stagger-2 space-y-12">
@@ -20,7 +21,7 @@ export default function DesignPage() {
         <DesignPrimitives />
         <DesignAI />
         <DesignLoader />
-        <DesignLibraryCard />
+        <DesignEventCard />
         <DesignPatterns />
       </div>
     </div>

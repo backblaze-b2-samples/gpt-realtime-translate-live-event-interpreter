@@ -222,10 +222,12 @@ def get_presigned_url(
         raise RuntimeError(f"B2 presign failed for '{key}': {e}") from e
 
 
-def get_upload_stats() -> dict:
+def get_event_stats() -> dict:
     """Paginate through all objects and return aggregate stats.
 
-    Raises RuntimeError on S3 failure.
+    Bucket-wide counters that feed the dashboard's `EventStats` envelope
+    alongside the per-event aggregates from `service.event_stats`. Raises
+    RuntimeError on S3 failure.
     """
     client = get_s3_client()
     contents: list[dict] = []
@@ -242,17 +244,17 @@ def get_upload_stats() -> dict:
 
     total_size = sum(obj["Size"] for obj in contents)
     today = datetime.now(UTC).date()
-    uploads_today = sum(
+    events_today = sum(
         1 for obj in contents if obj["LastModified"].date() == today
     )
     return {
         "total_files": len(contents),
         "total_size_bytes": total_size,
         "total_size_human": humanize_bytes(total_size),
-        "uploads_today": uploads_today,
+        "events_today": events_today,
     }
 
 
-# Audio Library helpers live in `b2_audio.py` and are re-exported via
-# `app.repo.__init__`. Keeping them in their own module lets the generic
-# helpers above stay focused on the full-bucket explorer.
+# Events / glossaries prefix helpers live in `b2_events.py` and are
+# re-exported via `app.repo.__init__`. Keeping them in their own module
+# lets the generic helpers above stay focused on the full-bucket explorer.

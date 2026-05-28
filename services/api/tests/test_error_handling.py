@@ -30,7 +30,7 @@ async def test_stats_b2_failure_returns_500(client, monkeypatch):
     def explode():
         raise RuntimeError("B2 stats query failed")
 
-    monkeypatch.setattr(files_service, "get_upload_stats", explode)
+    monkeypatch.setattr(files_service, "get_event_stats", explode)
 
     response = await client.get("/files/stats")
     assert response.status_code == 500

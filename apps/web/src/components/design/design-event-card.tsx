@@ -24,7 +24,7 @@ const sampleEvent: Event = {
   artifacts: [],
 };
 
-export function DesignLibraryCard() {
+export function DesignEventCard() {
   return (
     <Section
       id="event-card"

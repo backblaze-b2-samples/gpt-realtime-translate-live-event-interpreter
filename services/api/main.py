@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
 from app.config import settings  # noqa: E402
 from app.runtime import (  # noqa: E402
+    config as runtime_config,
     events,
     files,
     glossary,
@@ -152,6 +153,7 @@ app.add_middleware(
 app.add_middleware(BaseHTTPMiddleware, dispatch=metrics.timing_middleware)
 
 app.include_router(health.router, tags=["health"])
+app.include_router(runtime_config.router, tags=["config"])
 app.include_router(events.router, tags=["events"])
 app.include_router(live.router, tags=["live"])
 app.include_router(glossary.router, tags=["glossary"])

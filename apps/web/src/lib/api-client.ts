@@ -6,6 +6,7 @@ import type {
   FileMetadata,
   Glossary,
   GlossaryTerm,
+  LiveDefaults,
 } from "@gpt-realtime-translate-live-event-interpreter/shared";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -56,6 +57,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function getHealth() {
   return apiFetch<{ status: string; b2_connected: boolean }>("/health");
+}
+
+// --- Config (defaults consumed by the /live speaker console) ---
+
+export async function getLiveDefaults() {
+  return apiFetch<LiveDefaults>("/config/defaults");
 }
 
 // --- Files (full-bucket explorer; non-negotiable keep) ---

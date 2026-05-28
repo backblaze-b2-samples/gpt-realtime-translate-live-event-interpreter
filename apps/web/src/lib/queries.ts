@@ -15,6 +15,7 @@ import {
   getFileStats,
   getGlossaries,
   getGlossary,
+  getLiveDefaults,
   getPreviewUrl,
   upsertGlossary,
 } from "@/lib/api-client";
@@ -24,6 +25,7 @@ import type {
   FileMetadata,
   Glossary,
   GlossaryTerm,
+  LiveDefaults,
 } from "@gpt-realtime-translate-live-event-interpreter/shared";
 
 // Single source of truth for query keys. Keep these tightly scoped so that
@@ -41,7 +43,19 @@ export const qk = {
   event: (id: string) => [...qk.all, "event", id] as const,
   glossaries: () => [...qk.all, "glossaries"] as const,
   glossary: (id: string) => [...qk.all, "glossary", id] as const,
+  liveDefaults: () => [...qk.all, "config", "defaults"] as const,
 };
+
+// --- Config (defaults the speaker console seeds its form from) ---
+
+export function useLiveDefaults() {
+  return useQuery<LiveDefaults, ApiError>({
+    queryKey: qk.liveDefaults(),
+    queryFn: getLiveDefaults,
+    // Defaults change only on config reload — long stale time.
+    staleTime: 5 * 60_000,
+  });
+}
 
 // --- Files (full-bucket explorer; non-negotiable keep) ---
 

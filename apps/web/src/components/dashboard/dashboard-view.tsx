@@ -6,10 +6,10 @@ import { CalendarRange, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { EventActivityChart } from "@/components/dashboard/event-activity-chart";
 import { FormatBreakdown } from "@/components/dashboard/format-breakdown";
-import { RecentUploadsTable } from "@/components/dashboard/recent-uploads-table";
+import { RecentEventsTable } from "@/components/dashboard/recent-events-table";
 import { StatsCards } from "@/components/dashboard/stats-cards";
-import { UploadChart } from "@/components/dashboard/upload-chart";
 import { useFileStats } from "@/lib/queries";
 
 /**
@@ -51,10 +51,10 @@ export function DashboardView() {
       <FormatBreakdown />
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="animate-fade-in-up stagger-3">
-          <UploadChart />
+          <EventActivityChart />
         </div>
         <div className="animate-fade-in-up stagger-4">
-          <RecentUploadsTable />
+          <RecentEventsTable />
         </div>
       </div>
     </>

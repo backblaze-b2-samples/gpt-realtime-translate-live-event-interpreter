@@ -88,6 +88,12 @@ export interface Language {
   display_name: string;
 }
 
+export interface LiveDefaults {
+  default_source_language: string;
+  default_target_languages: string[];
+  persist_translated_audio_default: boolean;
+}
+
 export interface GlossaryTerm {
   term: string;
   translations: Record<string, string>;

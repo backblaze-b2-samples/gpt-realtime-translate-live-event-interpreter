@@ -154,7 +154,7 @@ def extract_metadata(
 
 # Keys we stamp onto the B2 object as user metadata. S3 only accepts ASCII
 # and folds header names to lower-case kebab-case, so we keep these names
-# stable and read them back the same way in `service/library.py`.
+# stable and read them back the same way in `service/events.py`.
 S3_AUDIO_META_KEYS = ("duration-ms", "sample-rate", "channels", "bit-depth", "codec")
 
 

@@ -14,7 +14,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@ai-audio-starter-kit/shared':
+      '@gpt-realtime-translate-live-event-interpreter/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@hookform/resolvers':

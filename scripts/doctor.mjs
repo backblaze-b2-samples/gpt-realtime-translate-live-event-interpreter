@@ -34,12 +34,18 @@ const REQUIRED_B2_VARS = [
   "B2_APPLICATION_KEY",
   "B2_BUCKET_NAME",
 ];
+// OpenAI Realtime is required for the live-interpretation feature. We surface
+// the same preflight failure shape as the B2 keys — the rest of the app
+// (events explorer, /files, dashboard) still works without it, but `pnpm dev`
+// is the moment to call out the gap loudly so users don't hit it mid-demo.
+const REQUIRED_OPENAI_VARS = ["OPENAI_API_KEY"];
 const PLACEHOLDERS = new Set([
   "your_b2_endpoint",
   "your_b2_region",
   "your_key_id",
   "your_application_key",
   "your-bucket-name",
+  "your_openai_api_key",
 ]);
 
 // Only Next.js: `pnpm dev` self-heals the API side via scripts/pick-port.mjs,
@@ -187,6 +193,22 @@ function checkEnv() {
     fail(
       `.env still has placeholder values: ${placeholders.join(", ")}`,
       "Edit .env and replace placeholders with your real B2 credentials (https://secure.backblaze.com/app_keys.htm?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-gpt-realtime-translate-live-event-interpreter)",
+    );
+  }
+  const openaiMissing = REQUIRED_OPENAI_VARS.filter((k) => !env[k]);
+  if (openaiMissing.length > 0) {
+    fail(
+      `.env is missing required OpenAI variables: ${openaiMissing.join(", ")}`,
+      "Add OPENAI_API_KEY to .env — get one at https://platform.openai.com/api-keys. The live-interpretation feature needs it; the events explorer and /files work without it.",
+    );
+  }
+  const openaiPlaceholders = REQUIRED_OPENAI_VARS.filter(
+    (k) => env[k] && PLACEHOLDERS.has(env[k]),
+  );
+  if (openaiPlaceholders.length > 0) {
+    fail(
+      `.env still has placeholder OpenAI values: ${openaiPlaceholders.join(", ")}`,
+      "Edit .env and replace `your_openai_api_key` with a real key from https://platform.openai.com/api-keys",
     );
   }
 }

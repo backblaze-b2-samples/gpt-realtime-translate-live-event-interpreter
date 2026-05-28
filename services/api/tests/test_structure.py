@@ -107,17 +107,36 @@ def test_no_websocket_business_logic():
     Route handlers must call into the service layer; reaching past it
     breaks the layering invariant and makes the realtime path untestable
     without spinning up an S3 client.
+
+    Also asserts the positive case: `runtime/live.py` must import from
+    `app.service.realtime_session`. Without this check the rule is
+    tautologically satisfied by deleting the WebSocket code entirely.
     """
     live_py = APP_ROOT / "runtime" / "live.py"
-    if not live_py.exists():
-        return  # nothing to assert against in a degenerate scaffold
+    assert live_py.exists(), (
+        "runtime/live.py is missing — the WebSocket surface must exist."
+    )
+    imports = _get_imports(live_py)
     violations: list[str] = []
-    for imp in _get_imports(live_py):
+    for imp in imports:
         if imp.startswith("app.repo"):
             violations.append(
                 f"runtime/live.py: imports {imp} — WebSocket handlers must go through service/"
             )
     assert violations == [], "live WebSocket boundary violations:\n" + "\n".join(violations)
+
+    # Positive assertion: the WebSocket handlers must drive translation
+    # through service.realtime_session — otherwise the rule above is
+    # trivially satisfied by handlers that do nothing.
+    drives_realtime = any(
+        imp == "app.service.realtime_session"
+        or imp.startswith("app.service.realtime_session.")
+        for imp in imports
+    )
+    assert drives_realtime, (
+        "runtime/live.py must import from app.service.realtime_session "
+        "(WebSocket handlers drive translation through the service layer)."
+    )
 
 
 def test_file_size_limits():

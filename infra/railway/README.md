@@ -29,6 +29,8 @@ Set these on the API service:
 | `B2_KEY_ID` | Your B2 key ID |
 | `B2_APPLICATION_KEY` | Your B2 key |
 | `B2_BUCKET_NAME` | Your bucket name |
+| `OPENAI_API_KEY` | Your OpenAI API key (required for the live-interpretation feature; the events explorer and `/files` work without it) |
+| `OPENAI_REALTIME_MODEL` | Optional override — defaults to `gpt-realtime-translate` |
 | `API_CORS_ORIGINS` | Your web service URL (e.g., `https://web-production-xxx.up.railway.app`) |
 
 Set this on the Web service:

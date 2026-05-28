@@ -21,7 +21,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { useEventActivity } from "@/lib/queries";
 
-export function UploadChart() {
+export function EventActivityChart() {
   const { data: activity, error, refetch } = useEventActivity(7);
 
   const data = useMemo(
