@@ -5,12 +5,12 @@ A real-time **live event interpreter** built on OpenAI's GPT-Realtime-Translate 
 
 This is the canonical "fan-out, archive everything" pattern: one source generates many derived artifacts, and object storage is the natural home for the result.
 
-**This is a scaffold.** The end-to-end live-translation feature is staged behind a typed adapter — the speaker / attendee WebSocket handlers exist, validate inputs, and close with a structured "not yet implemented" frame. The remaining wiring lands in a follow-up exec plan. Everything else (events explorer, archive view, glossary surface, dashboard, full-bucket explorer) is real today.
+**Live translation is implemented end to end.** With an `OPENAI_API_KEY` set, the speaker console captures the mic and the API bridges to one `gpt-realtime-translate` session per target language, streaming translated audio + captions to attendees; the event archives to B2 (source audio, per-language transcripts/captions) when it ends. Without a key the speaker socket closes with a structured `4001` frame and the rest of the app (events explorer, archive view, glossary, dashboard, full-bucket explorer) still works. A live run requires a real OpenAI key and network access.
 
 ## What you get out of the box
 
-- `/live` — speaker console (scaffold placeholder until OpenAI Realtime wiring lands)
-- `/live/[id]/listen` — attendee listen view (scaffold placeholder)
+- `/live` — speaker console: mic capture, go-live, live caption preview, attendee count, shareable listen link
+- `/live/[id]/listen` — attendee listen view: language picker, translated audio playback + live captions
 - `/events` — Events explorer grid scoped to the `events/` prefix in B2
 - `/events/[id]` — single-event detail view: source-audio playback, per-language transcript / VTT / SRT downloads, artifact listing
 - `/glossary` — Glossary management surface (reusable JSON glossaries attachable to events)
@@ -28,6 +28,18 @@ This is the canonical "fan-out, archive everything" pattern: one source generate
 **Events** — every event archived to B2 with status, language chips, attendee peak, and actions:
 
 ![Events view showing a grid of event cards with status badges, language chips, and listen / open / delete actions](./docs/images/events.png)
+
+**Speaker console** — set the event title, source and target languages, and the persist-audio toggle, then go live:
+
+![Speaker console setup form with event title, source language, target language checkboxes, persist-translated-audio toggle, and a Go live button](./docs/images/speaker-console.png)
+
+**Speaker console (live)** — running event with a live caption preview, attendee count, and shareable listen link:
+
+![Speaker console during a live event showing the live timer, attendee count, copyable attendee link, and a scrolling transcript with source lines and per-language translations](./docs/images/speaker-console-live.png)
+
+**Attendee listen view** — pick a target language and follow translated captions in real time:
+
+![Attendee listen view for an event with a language picker, live indicator, and a stream of translated Spanish captions](./docs/images/attendee-listen.png)
 
 ## Agent-First Architecture
 
