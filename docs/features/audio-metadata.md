@@ -11,7 +11,7 @@ Post-event, not during the live stream. When the speaker disconnects and the sou
 
 ## Inputs
 
-- Raw bytes of the source recording (typically WAV 16-bit / 16 kHz mono written by the speaker page).
+- Raw bytes of the source recording (WAV 16-bit / 24 kHz mono written by `service.audio_archive` from the speaker's PCM stream).
 - Original filename / suggested extension.
 - Declared content type.
 

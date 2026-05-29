@@ -8,12 +8,12 @@ Two-tier representation:
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class TranscriptFormat(str, Enum):
+class TranscriptFormat(StrEnum):
     """Persisted transcript / caption formats."""
 
     txt = "txt"

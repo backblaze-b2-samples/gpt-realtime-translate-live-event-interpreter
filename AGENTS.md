@@ -10,8 +10,8 @@ This is the authoritative control surface for all coding agents on the
 apps/web/                                  Next.js 16 frontend (App Router, Tailwind v4, shadcn/ui)
   src/app/events/                          /events — Events explorer grid (sample-specific)
   src/app/events/[id]/                     /events/[id] — single-event detail (playback, transcripts, captions, artifacts)
-  src/app/live/                            /live — Speaker console (scaffold placeholder)
-  src/app/live/[id]/listen/                /live/[id]/listen — Attendee view (scaffold placeholder)
+  src/app/live/                            /live — Speaker console (mic capture -> speaker WS)
+  src/app/live/[id]/listen/                /live/[id]/listen — Attendee view (listen WS + audio playback)
   src/app/glossary/                        /glossary — Glossary management
   src/app/files/                           /files  — full-bucket explorer (non-negotiable keep)
   src/components/events/                   event-card, events-view, waveform
@@ -20,13 +20,13 @@ services/api/                              FastAPI backend (layered: types/confi
   app/runtime/live.py                      WebSocket: speaker + listen
   app/runtime/glossary.py                  /glossaries CRUD
   app/service/events.py                    Event lifecycle (validate, list, get, create, cascade-delete)
-  app/service/realtime_session.py          Drives the OpenAI Realtime session, fan-out to attendees
+  app/service/realtime_session.py          Drives one Realtime session per target language, fan-out to attendees
   app/service/transcripts.py               Chunk accumulation + VTT/SRT persistence
   app/service/glossary.py                  Glossary load/store
   app/service/audio_metadata.py            wave + mutagen extractor for post-event source audio
   app/repo/b2_client.py                    boto3 — generic file helpers
   app/repo/b2_events.py                    boto3 — events / glossaries prefix helpers
-  app/repo/openai_realtime.py              openai — the ONLY place the SDK is imported
+  app/repo/openai_realtime.py              websockets — the ONLY place OpenAI's realtime API is contacted
   app/types/events.py                      Event, EventArtifact, EventStatus, EventCreateRequest, Language
   app/types/transcript.py                  TranscriptChunk, CaptionCue, TranscriptFormat
   app/types/glossary.py                    Glossary, GlossaryTerm
@@ -70,7 +70,7 @@ glossaries/<glossary-id>.json
 
 **B2 surface**: S3-only. No `b2-native` calls anywhere. Every `boto3.client("s3", …)` instantiation MUST pass `Config(user_agent_extra="b2ai-gpt-realtime-translate-live-event-interpreter")`. No hardcoded region strings in source (use `B2_REGION` from `.env`).
 
-**OpenAI surface**: only `repo/openai_realtime.py` may import `openai`. Everything else drives translation through `OpenAIRealtimeSession`. The current implementation is a scaffold stub — `connect()` raises `NotImplementedError("scaffold")` until the follow-up exec plan lands.
+**OpenAI surface**: only `repo/openai_realtime.py` contacts OpenAI's realtime API; everything else drives translation through `OpenAIRealtimeSession`. The adapter speaks the `gpt-realtime-translate` *Translations* protocol over `websockets` (the dedicated `/v1/realtime/translations` endpoint has no typed `openai`-SDK helper), opening **one session per target language**. `test_openai_only_in_repo` still enforces that no `openai` import leaks elsewhere. See [docs/features/realtime-translation.md](docs/features/realtime-translation.md).
 
 ## 3. Quality Expectations
 

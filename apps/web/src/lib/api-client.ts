@@ -11,6 +11,14 @@ import type {
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/** WebSocket origin derived from API_BASE (http -> ws, https -> wss). */
+export const WS_BASE = API_BASE.replace(/^http/, "ws");
+
+/** Build an absolute WebSocket URL for a backend path (e.g. `/events/x/speaker`). */
+export function wsUrl(path: string): string {
+  return `${WS_BASE}${path}`;
+}
+
 /** Typed API error with HTTP status code for caller-side branching. */
 export class ApiError extends Error {
   constructor(

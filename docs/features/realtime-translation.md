@@ -3,13 +3,35 @@
 
 ## Purpose
 
-Wrap OpenAI's GPT-Realtime-Translate API behind a typed adapter so the rest of the codebase never imports `openai` directly. Mirrors the `boto3`-in-repo containment rule.
+Wrap OpenAI's `gpt-realtime-translate` API behind a typed adapter so the rest of the codebase never contacts OpenAI's realtime API directly. Mirrors the `boto3`-in-repo containment rule.
 
 ## Containment
 
-- The ONLY place `openai` may be imported is `services/api/app/repo/openai_realtime.py`.
-- The `tests/test_structure.py::test_openai_only_in_repo` test asserts the rule mechanically.
+- The ONLY module that contacts OpenAI's realtime API is `services/api/app/repo/openai_realtime.py`.
+- `tests/test_structure.py::test_openai_only_in_repo` asserts no `openai` import exists outside it (the import stays vacuously contained — see the transport note below).
 - All higher layers (`service/`, `runtime/`) drive translation via `OpenAIRealtimeSession`.
+
+## Transport — websockets, not the `openai` SDK
+
+`gpt-realtime-translate` uses a **dedicated** endpoint (`wss://api.openai.com/v1/realtime/translations`) and a `session.*` event protocol distinct from the standard Realtime API. There is no first-class typed `openai`-SDK helper for it (OpenAI's own docs drive it with raw websockets, in Python too), so the adapter uses the async `websockets` library — a transitive dependency of `uvicorn[standard]`, pinned explicitly in `requirements.txt` and imported lazily inside `connect()`. The containment intent is preserved: this file is the single point of contact with OpenAI's realtime API.
+
+## One session per output language
+
+A translation session is configured around **one** output language (`session.audio.output.language`). An event with N target languages therefore opens N sessions; the service layer (`service.realtime_session.EventBroadcast`) fans the same source audio to all of them and tags each session's output with its language. The source language is **auto-detected** by the model.
+
+## Protocol
+
+```
+connect   wss://api.openai.com/v1/realtime/translations?model=<model>
+          header: Authorization: Bearer <OPENAI_API_KEY>
+configure session.update -> session.audio.output.language = <bcp47>
+          (input transcription model: gpt-realtime-whisper)
+input     session.input_audio_buffer.append { audio: <b64 pcm16 24kHz mono LE> }
+output    session.output_audio.delta        translated audio (b64)
+          session.output_transcript.delta   translated text
+          session.input_transcript.delta    source-language text
+end       session.close -> session.closed
+```
 
 ## Interface
 
@@ -21,32 +43,21 @@ class OpenAIRealtimeSession:
     async def close(self) -> None: ...
 ```
 
-`RealtimeChunk` is a frozen dataclass with `kind` (`audio` | `transcript` | `source`), `lang`, `payload` (base64 for audio, UTF-8 text for transcripts), `start_ms`, `end_ms`, and `is_final`.
-
-## Scaffold status
-
-`connect()` raises `NotImplementedError("scaffold")` today. The real implementation will:
-
-1. Lazily `import openai` inside `connect()` (keeps the layering test mechanically clean — the static AST scan only sees module-level imports).
-2. Open the Realtime client connection authenticated with `OPENAI_API_KEY`.
-3. Send a system prompt seeded with the attached glossary's term list plus the target-language list.
-4. Yield typed `RealtimeChunk`s from the SDK's event stream.
-
-## Session lifecycle
-
-1. **Open**: speaker socket connects -> `EventBroadcast.start()` calls `OpenAIRealtimeSession.connect()`.
-2. **Stream**: source PCM goes in via `send_audio_chunk()`; translated chunks come out via `recv_translation_chunk()`.
-3. **Reconnect strategy**: on transient upstream disconnect, retry up to N times with exponential backoff (1s, 2s, 4s, …, capped at 30s). Partial transcript persists on every retry boundary so we never lose more than one window of content.
-4. **Close**: idempotent. Always called from `finally:` in the service layer.
+`RealtimeChunk` is a frozen dataclass with `kind` (`audio` | `transcript` | `source`), `lang`, `payload` (base64 for audio, UTF-8 text for transcripts), `start_ms`, `end_ms`, and `is_final`. Transcript deltas accumulate into segments; a segment is committed (`is_final=True`, eligible for a VTT cue) at sentence-final punctuation, with a trailing flush on close.
 
 ## Language list
 
-BCP-47 codes are accepted at the API boundary; the validator (`service.events.LANG_RE`) tolerates lowercase primary subtags with optional region/script (`en`, `es`, `pt-BR`, `zh-Hans`). The Realtime API's supported language list is the upstream cap; unsupported codes are surfaced to the speaker page as a 400 from `POST /events`.
+BCP-47 codes are accepted at the API boundary; the validator (`service.events.LANG_RE`) tolerates lowercase primary subtags with optional region/script (`en`, `es`, `pt-BR`, `zh-Hans`). The model's supported language list is the upstream cap.
+
+## Known limitations
+
+- **Glossary biasing is not applied.** `glossary_terms` is plumbed through the interface for forward-compat, but the translate model auto-detects source and does not take a system prompt the way a chat model does. Tracked in the [tech-debt tracker](../exec-plans/tech-debt-tracker.md).
+- **Single-attempt connect** — no reconnect/backoff on transient upstream drop yet.
 
 ## Tests
 
-- `services/api/tests/test_structure.py::test_openai_only_in_repo` — containment rule.
-- `services/api/tests/test_structure.py::test_no_backward_imports` — service may not import from runtime; runtime may not import openai directly.
+- `tests/test_realtime.py` — adapter parses `session.*` events into `RealtimeChunk`s against a fake websocket; `connect()` without a key raises.
+- `tests/test_structure.py::test_openai_only_in_repo` / `test_no_backward_imports`.
 
 ## Related
 

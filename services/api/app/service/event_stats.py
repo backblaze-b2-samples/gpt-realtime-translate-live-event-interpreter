@@ -7,6 +7,7 @@ shape and `EVENT_ID_RE` validation pattern from `service.events`.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from datetime import UTC, datetime
 
@@ -64,10 +65,8 @@ def get_event_aggregates() -> dict:
         for code in manifest.get("target_languages") or []:
             languages[code] = languages.get(code, 0) + 1
         if manifest.get("duration_ms"):
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 total_duration_ms += int(manifest["duration_ms"])
-            except (TypeError, ValueError):
-                pass
         peak = manifest.get("attendee_peak")
         if isinstance(peak, int) and peak > attendee_peak:
             attendee_peak = peak

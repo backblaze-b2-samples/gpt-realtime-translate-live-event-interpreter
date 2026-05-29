@@ -231,6 +231,31 @@ def create_event(req: EventCreateRequest) -> Event:
     return _event_from_manifest(req.id, manifest, [])
 
 
+def update_manifest(event_id: str, **fields) -> dict:
+    """Read-merge-write `event.json`; create it if absent.
+
+    Lets the live session flip status (scheduled -> live -> ended) and record
+    timing / attendee aggregates without a database. `None` values are skipped.
+    """
+    validate_event_id(event_id)
+    raw = get_event_object_bytes(_manifest_key(event_id))
+    manifest: dict = {}
+    if raw:
+        try:
+            manifest = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            manifest = {}
+    manifest.setdefault("id", event_id)
+    manifest.setdefault("created_at", datetime.now(UTC).isoformat())
+    manifest.update({k: v for k, v in fields.items() if v is not None})
+    put_event_object(
+        _manifest_key(event_id),
+        json.dumps(manifest, ensure_ascii=False).encode("utf-8"),
+        "application/json",
+    )
+    return manifest
+
+
 def delete_event(event_id: str) -> tuple[list[str], list[dict]]:
     """Cascade-delete every artifact under `events/<event-id>/`."""
     validate_event_id(event_id)
@@ -272,7 +297,3 @@ def get_captions_url(event_id: str, lang: str, fmt: str = "vtt") -> str:
         raise EventKeyError(detail="Invalid caption format")
     key = f"{EVENTS_PREFIX}{event_id}/{lang}/captions.{fmt}"
     return presign_event_download(key, filename=key.split("/")[-1])
-
-
-# Dashboard aggregates live in `service.event_stats.get_event_aggregates` to
-# keep this module under the 300-line file-size limit.

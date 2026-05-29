@@ -126,7 +126,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 
 - **Create event**: Browser -> `POST /events` -> service validates id/languages -> repo writes `events/<id>/event.json` -> response
 - **List events**: Browser -> `GET /events` -> service enumerates `events/` common prefixes -> HEADs each manifest in parallel -> returns sorted-by-created-at
-- **Speaker live**: Browser opens `WS /events/{id}/speaker` -> service registers an `EventBroadcast` -> repo `OpenAIRealtimeSession.connect()` (currently scaffold-stub) -> speaker page pumps PCM chunks in -> Realtime emits translated chunks back -> service fans out to per-language attendee queues -> service persists transcripts incrementally
+- **Speaker live**: Browser opens `WS /events/{id}/speaker` -> service registers an `EventBroadcast`, marks the manifest `live`, and opens one `OpenAIRealtimeSession` per target language (websockets to `/v1/realtime/translations`) -> speaker page streams 24 kHz PCM16 in -> each session emits translated audio + transcript back -> service fans out to per-language attendee queues + a speaker caption monitor -> transcripts persist on a cadence; on close it writes `source.wav` and flips the manifest to `ended`
 - **Attendee listen**: Browser opens `WS /events/{id}/listen?lang=<bcp47>` -> service joins the broadcast's per-language queue -> chunks stream to the browser; on disconnect the queue is dropped
 - **Playback**: Browser -> `GET /events/{id}/source-audio` -> service validates id -> repo generates inline presigned URL -> browser renders `<audio controls>`
 - **Transcript / caption download**: Browser -> `GET /events/{id}/transcript?lang=...` or `/captions?lang=...&fmt=vtt|srt` -> repo generates presigned URL with `Content-Disposition: attachment`

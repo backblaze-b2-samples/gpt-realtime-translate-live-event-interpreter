@@ -2,20 +2,22 @@
 
 Two sockets per event:
 
-  - `WS /events/{event_id}/speaker` — the speaker page pushes source audio
-    chunks in. The handler hands off to `service.realtime_session` which
-    drives the OpenAI Realtime upstream.
-  - `WS /events/{event_id}/listen` — attendees subscribe with a `?lang=`
-    query string and receive translated audio + caption chunks.
+  - `WS /events/{event_id}/speaker` — the speaker page sends a JSON config
+    frame, then streams binary PCM16 (24 kHz, mono) audio. The backend bridges
+    to the OpenAI Realtime translation sessions via
+    `service.realtime_session` and streams caption + attendee-count frames
+    back for the live preview.
+  - `WS /events/{event_id}/listen` — attendees subscribe with `?lang=` and
+    receive translated audio + caption JSON frames.
 
-Scaffold status:
-    Both handlers accept the connection, validate inputs, and immediately
-    close with a structured "not yet implemented" frame because
-    `service.realtime_session.EventBroadcast.start()` raises
-    `NotImplementedError` from the repo stub. The route layering (no direct
-    repo imports) is real and enforced by structural tests.
+Layering: this module drives translation through `service.realtime_session`
+and never imports `repo/` (enforced by
+`tests/test_structure.py::test_no_websocket_business_logic`).
 """
 
+import asyncio
+import contextlib
+import json
 import logging
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
@@ -26,28 +28,42 @@ from app.runtime.metrics import (
     record_event_started,
 )
 from app.service.events import EventKeyError, validate_event_id, validate_lang
-from app.service.realtime_session import end_session, start_session
+from app.service.realtime_session import (
+    EventBroadcast,
+    end_session,
+    get_session,
+    listen_attendee,
+    start_session,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 # Structured close codes (4xxx range is application-level per the WS spec).
-# We pick stable numbers so the frontend can branch reliably.
-CLOSE_NOT_IMPLEMENTED = 4001
+CLOSE_CANNOT_START = 4001  # no OPENAI_API_KEY, or upstream failed to open
 CLOSE_INVALID_INPUT = 4002
 CLOSE_NO_EVENT = 4003
 
 
 async def _close_with_reason(ws: WebSocket, code: int, reason: str) -> None:
-    """Send a structured close frame the frontend can branch on."""
-    try:
+    """Send a structured close frame the frontend can branch on, then close."""
+    with contextlib.suppress(Exception):
         await ws.send_json({"type": "close", "code": code, "reason": reason})
-    except Exception:
-        # If the client already vanished, just close. Logging the secondary
-        # send failure adds noise without insight.
-        pass
-    await ws.close(code=status.WS_1011_INTERNAL_ERROR)
+    with contextlib.suppress(Exception):
+        await ws.close(code=status.WS_1011_INTERNAL_ERROR)
+
+
+def _chunk_frame(chunk) -> dict:
+    """Serialize a `RealtimeChunk` into the attendee/speaker wire frame."""
+    return {
+        "type": "audio" if chunk.kind == "audio" else "caption",
+        "lang": chunk.lang,
+        "payload": chunk.payload,
+        "start_ms": chunk.start_ms,
+        "end_ms": chunk.end_ms,
+        "is_final": chunk.is_final,
+    }
 
 
 @router.websocket("/events/{event_id}/speaker")
@@ -59,14 +75,22 @@ async def speaker_socket(ws: WebSocket, event_id: str):
         await _close_with_reason(ws, CLOSE_INVALID_INPUT, e.detail)
         return
 
-    # First frame is the session-config JSON sent by the speaker page.
     try:
         config = await ws.receive_json()
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, json.JSONDecodeError, KeyError, RuntimeError):
         return
 
-    source_language = str(config.get("source_language", "en"))
-    target_languages = [str(c) for c in config.get("target_languages", [])]
+    source_language = str(config.get("source_language") or "en")
+    target_languages = [str(c) for c in (config.get("target_languages") or [])]
+    if not target_languages:
+        await _close_with_reason(ws, CLOSE_INVALID_INPUT, "No target languages configured")
+        return
+    try:
+        for code in [source_language, *target_languages]:
+            validate_lang(code)
+    except EventKeyError as e:
+        await _close_with_reason(ws, CLOSE_INVALID_INPUT, e.detail)
+        return
 
     record_event_started()
     try:
@@ -75,31 +99,75 @@ async def speaker_socket(ws: WebSocket, event_id: str):
             source_language=source_language,
             target_languages=target_languages,
             glossary_terms=config.get("glossary_terms"),
+            title=config.get("title"),
+            persist_translated_audio=bool(config.get("persist_translated_audio", False)),
         )
-        # The Realtime wrapper is a scaffold stub; start() raises.
         await broadcast.start()
-    except NotImplementedError:
-        await _close_with_reason(
-            ws,
-            CLOSE_NOT_IMPLEMENTED,
-            "Live translation is scaffolded but not yet implemented. "
-            "Wire OpenAIRealtimeSession.connect() to enable.",
-        )
+    except RuntimeError as e:
+        await _close_with_reason(ws, CLOSE_CANNOT_START, str(e))
         end_session(event_id)
         record_event_ended()
         return
     except Exception as e:
         logger.exception("Speaker session failed to start: %s", e)
-        await _close_with_reason(ws, CLOSE_NOT_IMPLEMENTED, "Internal error")
+        await _close_with_reason(ws, CLOSE_CANNOT_START, "Failed to open translation session")
         end_session(event_id)
         record_event_ended()
         return
 
+    await ws.send_json(
+        {"type": "ready", "event_id": event_id, "target_languages": target_languages}
+    )
+    monitor = asyncio.create_task(_speaker_monitor(ws, broadcast))
+    try:
+        await _speaker_ingest(ws, broadcast)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        monitor.cancel()
+        await asyncio.gather(monitor, return_exceptions=True)
+        await broadcast.stop()
+        end_session(event_id)
+        record_event_ended()
+
+
+async def _speaker_ingest(ws: WebSocket, broadcast: EventBroadcast) -> None:
+    """Pump inbound frames: binary -> source audio; `{type:"stop"}` -> end."""
+    while True:
+        message = await ws.receive()
+        if message["type"] == "websocket.disconnect":
+            return
+        if message.get("bytes") is not None:
+            await broadcast.push_source_audio(message["bytes"])
+        elif message.get("text"):
+            try:
+                data = json.loads(message["text"])
+            except json.JSONDecodeError:
+                continue
+            if data.get("type") == "stop":
+                return
+
+
+async def _speaker_monitor(ws: WebSocket, broadcast: EventBroadcast) -> None:
+    """Relay caption chunks + attendee-count changes to the speaker preview."""
+    queue = broadcast.monitor_queue()
+    last_count = -1
+    try:
+        while True:
+            try:
+                chunk = await asyncio.wait_for(queue.get(), timeout=2.0)
+                await ws.send_json(_chunk_frame(chunk))
+            except TimeoutError:
+                pass
+            if broadcast.attendee_count != last_count:
+                last_count = broadcast.attendee_count
+                await ws.send_json({"type": "attendees", "count": last_count})
+    finally:
+        broadcast.drop_monitor(queue)
+
 
 @router.websocket("/events/{event_id}/listen")
-async def listen_socket(
-    ws: WebSocket, event_id: str, lang: str = Query(...)
-):
+async def listen_socket(ws: WebSocket, event_id: str, lang: str = Query(...)):
     await ws.accept()
     try:
         validate_event_id(event_id)
@@ -108,13 +176,22 @@ async def listen_socket(
         await _close_with_reason(ws, CLOSE_INVALID_INPUT, e.detail)
         return
 
-    record_attendee_joined()
+    broadcast = get_session(event_id)
+    if broadcast is None:
+        await _close_with_reason(ws, CLOSE_NO_EVENT, "This event is not live right now.")
+        return
+    if lang not in broadcast.target_languages:
+        await _close_with_reason(
+            ws, CLOSE_INVALID_INPUT, f"Language '{lang}' is not offered for this event."
+        )
+        return
 
-    # Without an active session, surface a clear close code so the attendee
-    # page can render the "this event hasn't started yet / has ended" state.
-    await _close_with_reason(
-        ws,
-        CLOSE_NOT_IMPLEMENTED,
-        "Listen path is scaffolded but not yet implemented. "
-        "Drive listen_attendee() from service.realtime_session.",
-    )
+    record_attendee_joined()
+    await ws.send_json({"type": "ready", "lang": lang})
+    try:
+        async for chunk in listen_attendee(event_id, lang):
+            await ws.send_json(_chunk_frame(chunk))
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("Listen stream failed: event_id=%s lang=%s", event_id, lang)

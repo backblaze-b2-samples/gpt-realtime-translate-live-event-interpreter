@@ -35,9 +35,9 @@ Security principles and implementation for the gpt-realtime-translate-live-event
 ## OpenAI API key handling
 
 - Loaded once at startup via `pydantic-settings`.
-- Surfaced only inside `services/api/app/repo/openai_realtime.py`; no other module imports `openai`.
+- Surfaced only inside `services/api/app/repo/openai_realtime.py`, where it authenticates the realtime translations websocket; no other module contacts OpenAI's realtime API.
 - Never echoed in logs (the JSON formatter writes only the field names exposed on `LogRecord`).
-- Missing at startup -> the API logs a warning and the live-interpretation routes return scaffold-stub close frames; the rest of the app stays functional.
+- Missing at startup -> the API logs a warning and the speaker socket closes with a structured `4001` frame; the rest of the app stays functional.
 
 ## Download Safety
 

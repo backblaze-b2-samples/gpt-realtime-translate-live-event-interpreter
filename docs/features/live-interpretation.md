@@ -1,72 +1,79 @@
-<!-- last_verified: 2026-05-28 -->
+<!-- last_verified: 2026-05-29 -->
 # Live Interpretation
 
 ## Purpose
 
 Two WebSocket-driven UIs that together make the app's headline feature:
 
-- **Speaker console** (`/live`) — request microphone permission, configure source + target languages, optionally attach a glossary, then stream source audio over `WS /events/{id}/speaker`.
-- **Attendee listen** (`/live/[id]/listen`) — pick a target language, then receive translated audio + captions over `WS /events/{id}/listen?lang=<bcp47>`.
+- **Speaker console** (`/live`) — request microphone permission, pick the source language and target languages, then stream source audio over `WS /events/{id}/speaker`. Translated audio is archived to B2 by default (toggle it off to keep only captions/transcripts). Shows a live caption preview (source + every target) and the attendee count.
+- **Attendee listen** (`/live/[id]/listen`) — pick a target language, then hear translated audio and read live captions over `WS /events/{id}/listen?lang=<bcp47>`.
 
-## Scaffold status
-
-The route handlers, layering, and structural enforcement are real today. The actual translation transport is staged behind `OpenAIRealtimeSession.connect()` in `services/api/app/repo/openai_realtime.py`, which currently raises `NotImplementedError("scaffold")`. The speaker handler catches that exception and closes the WebSocket with a structured frame:
-
-```json
-{ "type": "close", "code": 4001, "reason": "Live translation is scaffolded but not yet implemented." }
-```
-
-The attendee handler returns the same shape with the message scoped to "Listen path is scaffolded". The follow-up exec plan will wire `OpenAIRealtimeSession.connect()` to the OpenAI Realtime SDK.
+The browser talks only to our API; the API bridges to OpenAI (one upstream `gpt-realtime-translate` session per target language) so the OpenAI key never reaches the client. See [Realtime Translation](realtime-translation.md).
 
 ## Inputs / outputs
 
 ### Speaker socket — `WS /events/{event_id}/speaker`
 
-1. Client connects.
-2. Client sends a JSON config frame:
+1. Client connects and sends a JSON config frame:
 
    ```json
-   {
-     "source_language": "en",
-     "target_languages": ["es", "fr", "ja"],
-     "glossary_terms": []
-   }
+   { "title": "Q3 All-Hands", "source_language": "en", "target_languages": ["es", "fr", "ja"], "persist_translated_audio": true }
    ```
 
-3. Client streams binary PCM chunks (16-bit, 16 kHz, mono — chosen for compatibility with the Realtime API; the speaker page handles the resample).
-4. Backend pushes every chunk into the upstream Realtime session.
+2. Client streams **binary** PCM16 frames (24 kHz, mono, little-endian — the gpt-realtime-translate input format; the speaker page captures at this rate directly).
+3. Backend forwards each chunk to every upstream session and streams JSON status frames back:
+
+   ```json
+   { "type": "ready", "event_id": "…", "target_languages": ["es", "fr"] }
+   { "type": "caption", "lang": "es", "payload": "Hola, mundo.", "start_ms": 1200, "end_ms": 1800, "is_final": true }
+   { "type": "caption", "lang": null, "payload": "Hello, world.", "is_final": true }
+   { "type": "attendees", "count": 3 }
+   ```
+
+   `lang: null` is the source-language transcript mirror. Interim frames (`is_final: false`) carry incremental delta text; final frames carry the full committed segment.
 
 ### Attendee socket — `WS /events/{event_id}/listen?lang=<bcp47>`
 
-1. Client connects with the language as a query string.
-2. Backend validates the language against the event's target list. Unsupported language closes with code `4002`.
+1. Client connects with the target language as a query string.
+2. No active session ⇒ close `4003`. Language not in the event's target list ⇒ close `4002`.
 3. Backend streams JSON frames:
 
    ```json
-   { "type": "audio", "lang": "es", "payload": "<base64-pcm>", "start_ms": 1200, "end_ms": 1800, "is_final": false }
+   { "type": "ready", "lang": "es" }
+   { "type": "audio", "lang": "es", "payload": "<base64 pcm16>", "start_ms": 1200, "end_ms": 1800, "is_final": false }
    { "type": "caption", "lang": "es", "payload": "Hola, mundo.", "start_ms": 1200, "end_ms": 1800, "is_final": true }
    ```
 
+### Close codes
+
+| Code | Meaning |
+|------|---------|
+| `4001` | Session can't start — missing/invalid `OPENAI_API_KEY` or upstream failed to open |
+| `4002` | Invalid input — malformed event id / language, or language not offered |
+| `4003` | No active session for this event (not started or already ended) |
+
 ## Flow
 
-1. Speaker creates the event (`POST /events`) and opens the speaker socket.
-2. `service.realtime_session.start_session(...)` registers an `EventBroadcast` for the event and opens an upstream Realtime session.
-3. Source PCM chunks flow speaker → service → repo → OpenAI.
-4. Translated chunks flow OpenAI → repo → service → per-language attendee queues → attendee sockets.
-5. On clean disconnect, the service ends the broadcast and finalizes per-language transcript / caption files in B2.
-6. On error, the WebSocket emits a structured close frame the frontend can branch on.
+1. Speaker opens the speaker socket and sends config.
+2. `service.realtime_session.start_session(...)` registers an `EventBroadcast`, marks the event `live` in `event.json`, and opens **one** `OpenAIRealtimeSession` per target language.
+3. Source PCM flows speaker → service → every upstream session.
+4. Each session's translated audio + transcript flows back → service fans out to the matching per-language attendee queues (and the speaker monitor for captions).
+5. Final transcript cues accumulate and persist on a 15 s cadence + on close (`events/<id>/<lang>/…` and `events/<id>/source-transcript.*`).
+6. On disconnect the broadcast drains, writes `source.wav` (and per-language `audio.wav` when opted in), and flips the manifest to `ended` with duration + attendee peak — so `/events` and `/events/[id]` fill with real data.
 
 ## Edge cases
 
-- **No `OPENAI_API_KEY`** — the speaker socket closes with code `4001` and the API logs a warning at startup. Browsing existing events still works.
-- **Speaker disconnects mid-event** — the broadcast tears down and the partial transcript is persisted to `events/<id>/<lang>/transcript.txt` so attendees who joined late still have a record.
-- **Attendee picks an unsupported language** — the socket closes with code `4002`; the attendee page falls back to the source-language audio (no translation) and surfaces an inline notice.
+- **No `OPENAI_API_KEY`** — `connect()` raises and the speaker socket closes with `4001`; the rest of the app stays usable. The API also logs a warning at startup.
+- **Speaker disconnects mid-event** — the broadcast tears down and the partial transcript is already persisted, so attendees who joined late still have a record.
+- **Attendee picks an unsupported language** — the socket closes with `4002`.
+- **Single-instance only** — the session registry is in-memory; multi-instance needs shared state (see [RELIABILITY.md](../RELIABILITY.md)).
 
 ## Tests
 
-- `services/api/tests/test_structure.py::test_openai_only_in_repo` — only `repo/openai_realtime.py` may import `openai`.
-- `services/api/tests/test_structure.py::test_no_websocket_business_logic` — `runtime/live.py` must not import from `repo/`.
-- `apps/web/e2e/live-speaker-smoke.spec.ts` — speaker page renders.
+- `services/api/tests/test_realtime.py` — adapter event parsing (mocked websocket) + fan-out / source-dedup / persistence.
+- `services/api/tests/test_structure.py::test_openai_only_in_repo` — OpenAI containment.
+- `services/api/tests/test_structure.py::test_no_websocket_business_logic` — `runtime/live.py` drives `service.realtime_session`, never `repo/`.
+- `apps/web/e2e/live-speaker-smoke.spec.ts` — speaker form renders.
 - `apps/web/e2e/attendee-language-pick.spec.ts` — attendee page renders.
 
 ## Related

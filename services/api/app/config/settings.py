@@ -1,4 +1,13 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+# Anchor the env file to the repo root so settings load identically no matter
+# the process CWD. `dev:api` launches uvicorn from `services/api`, so a relative
+# ".env" would resolve to a nonexistent `services/api/.env` and silently fall
+# back to code defaults. parents[4] == repo root (config -> app -> api ->
+# services -> root). Absent (e.g. in CI), pydantic just uses the defaults below.
+_ENV_FILE = Path(__file__).resolve().parents[4] / ".env"
 
 
 class Settings(BaseSettings):
@@ -18,7 +27,9 @@ class Settings(BaseSettings):
     # Live interpretation defaults (overridable per-event from the speaker console).
     default_source_language: str = "en"
     default_target_languages: str = "es,fr,de,ja"
-    persist_translated_audio: bool = False
+    # Archive each language's translated audio to B2 by default. Set to False in
+    # `.env` to keep only captions/transcripts and skip the per-language audio.
+    persist_translated_audio: bool = True
 
     api_port: int = 8000
     # Explicit allowlist by default — covers Next on :3000 and the
@@ -39,7 +50,7 @@ class Settings(BaseSettings):
     # volume in production if you care about surviving restarts.
     download_count_file: str = "data/download_count.json"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": str(_ENV_FILE), "env_file_encoding": "utf-8"}
 
     @property
     def cors_origins(self) -> list[str]:

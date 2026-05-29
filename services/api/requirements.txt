@@ -7,6 +7,10 @@ pydantic-settings>=2.7.0
 boto3>=1.35.0
 python-magic>=0.4.27
 mutagen>=1.47
+# OpenAI Realtime Translations is driven over a raw WebSocket (no typed SDK
+# helper for /v1/realtime/translations). Already a transitive dep of
+# uvicorn[standard]; pinned here since repo/openai_realtime imports it directly.
+websockets>=13.0
 
 # Dev / quality
 ruff>=0.8.0

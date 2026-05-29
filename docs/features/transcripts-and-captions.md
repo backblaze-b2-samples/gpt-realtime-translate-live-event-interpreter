@@ -53,7 +53,7 @@ TranscriptChunk(
 
 ## Tests
 
-- The scaffold ships unit tests via the structural suite. Cue-list correctness lands in the follow-up exec plan together with the Realtime wiring.
+- `service.realtime_session` drives `persist_chunks` on a 15 s cadence and on speaker disconnect (source = `lang=None`, each target = its code). Fan-out + accumulation are covered by `services/api/tests/test_realtime.py`; the structural suite covers layering.
 
 ## Related
 

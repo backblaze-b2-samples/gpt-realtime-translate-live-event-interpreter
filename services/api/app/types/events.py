@@ -8,12 +8,12 @@ plus per-language captions / transcripts / optional translated audio.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class EventStatus(str, Enum):
+class EventStatus(StrEnum):
     """Lifecycle states for a live event.
 
     - `scheduled`: created but speaker hasn't started streaming yet.

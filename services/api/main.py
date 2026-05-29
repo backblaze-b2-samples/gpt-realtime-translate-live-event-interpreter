@@ -18,8 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
 from app.config import settings  # noqa: E402
+from app.runtime import config as runtime_config  # noqa: E402
 from app.runtime import (  # noqa: E402
-    config as runtime_config,
     events,
     files,
     glossary,
