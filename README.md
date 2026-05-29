@@ -7,18 +7,6 @@ This is the canonical "fan-out, archive everything" pattern: one source generate
 
 **Live translation is implemented end to end.** With an `OPENAI_API_KEY` set, the speaker console captures the mic and the API bridges to one `gpt-realtime-translate` session per target language, streaming translated audio + captions to attendees; the event archives to B2 (source audio, per-language transcripts/captions) when it ends. Without a key the speaker socket closes with a structured `4001` frame and the rest of the app (events explorer, archive view, glossary, dashboard, full-bucket explorer) still works. A live run requires a real OpenAI key and network access.
 
-## What you get out of the box
-
-- `/live` — speaker console: mic capture, go-live, live caption preview, attendee count, shareable listen link
-- `/live/[id]/listen` — attendee listen view: language picker, translated audio playback + live captions
-- `/events` — Events explorer grid scoped to the `events/` prefix in B2
-- `/events/[id]` — single-event detail view: source-audio playback, per-language transcript / VTT / SRT downloads, artifact listing
-- `/glossary` — Glossary management surface (reusable JSON glossaries attachable to events)
-- `/files` — full B2 bucket explorer (tree view, preview, download, delete) — non-negotiable keep
-- `/` (Dashboard) — total events, total interpretation minutes, live-now count, peak concurrent attendees
-- `/design` — design-system showcase including the `EventCard` primitive
-- FastAPI backend with strict layered architecture (`types -> config -> repo -> service -> runtime`) and structural tests, including new `test_openai_only_in_repo`
-
 ## What it looks like
 
 **Dashboard** — events count, total interpretation minutes, live-now, peak attendees, daily activity:
@@ -41,9 +29,21 @@ This is the canonical "fan-out, archive everything" pattern: one source generate
 
 ![Attendee listen view for an event with a language picker, live indicator, and a stream of translated Spanish captions](./docs/images/attendee-listen.png)
 
+## What you get out of the box
+
+- `/live` — speaker console: mic capture, go-live, live caption preview, attendee count, shareable listen link
+- `/live/[id]/listen` — attendee listen view: language picker, translated audio playback + live captions
+- `/events` — Events explorer grid scoped to the `events/` prefix in B2
+- `/events/[id]` — single-event detail view: source-audio playback, per-language transcript / VTT / SRT downloads, artifact listing
+- `/glossary` — Glossary management surface (reusable JSON glossaries attachable to events)
+- `/files` — full B2 bucket explorer (tree view, preview, download, delete) — non-negotiable keep
+- `/` (Dashboard) — total events, total interpretation minutes, live-now count, peak concurrent attendees
+- `/design` — design-system showcase including the `EventCard` primitive
+- FastAPI backend with strict layered architecture (`types -> config -> repo -> service -> runtime`) and structural tests, including new `test_openai_only_in_repo`
+
 ## Agent-First Architecture
 
-This repo is optimized for coding agents. Use the template, point your agent at it, and start building.
+This repo is optimized for coding agents. Point your agent at it and start building.
 
 The structure follows the principle that **repository knowledge is the system of record**. Anything an agent can't access in-context doesn't exist — so everything it needs to reason about the codebase is versioned, co-located, and discoverable from the repo itself.
 
@@ -83,28 +83,13 @@ docs/
 
 You need: Node.js >= 20, pnpm >= 9, Python >= 3.11, a free **[Backblaze B2 account](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-gpt-realtime-translate-live-event-interpreter)**, and an **OpenAI API key** (required for live interpretation; not required to browse archived events).
 
-### Start a new project
-
-**Option 1: GitHub Template (recommended)**
-
-Click the green **"Use this template"** button at the top of this repo.
-
-**Option 2: Clone and reinitialize**
-
-```bash
-git clone https://github.com/backblaze-b2-samples/gpt-realtime-translate-live-event-interpreter.git my-interpreter-app
-cd my-interpreter-app
-rm -rf .git
-git init
-git add .
-git commit -m "Initial commit from gpt-realtime-translate-live-event-interpreter"
-```
-
 ### Setup
 
-**1. Install dependencies**
+**1. Clone and install dependencies**
 
 ```bash
+git clone https://github.com/backblaze-b2-samples/gpt-realtime-translate-live-event-interpreter.git
+cd gpt-realtime-translate-live-event-interpreter
 pnpm install
 ```
 
