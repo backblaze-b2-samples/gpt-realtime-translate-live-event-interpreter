@@ -48,9 +48,14 @@ function exceedsUtf8ByteLimit(value: string, maxBytes: number): boolean {
     const code = value.charCodeAt(i);
     if (code < 0x80) bytes += 1;
     else if (code < 0x800) bytes += 2;
-    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < value.length) {
-      bytes += 4;
-      i += 1;
+    else if (code >= 0xd800 && code <= 0xdbff) {
+      const next = i + 1 < value.length ? value.charCodeAt(i + 1) : 0;
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        i += 1;
+      } else {
+        bytes += 3;
+      }
     } else bytes += 3;
     if (bytes > maxBytes) return true;
   }

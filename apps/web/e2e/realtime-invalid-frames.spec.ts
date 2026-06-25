@@ -194,6 +194,17 @@ const invalidSpeakerFrames: Array<{ name: string; message: MockMessage }> = [
     },
   },
   {
+    name: "mispaired surrogate payload",
+    message: {
+      kind: "text",
+      data: JSON.stringify({
+        type: "caption",
+        lang: "es",
+        payload: "\uD800\u00E9".repeat(4096),
+      }),
+    },
+  },
+  {
     name: "oversized language tag",
     message: {
       kind: "text",

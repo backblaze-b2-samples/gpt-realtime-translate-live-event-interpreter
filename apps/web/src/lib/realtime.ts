@@ -292,7 +292,8 @@ export function useListenSession(eventId: string) {
   const captions = useCaptions();
   const refs = useRef<ListenRefs>({});
 
-  const cleanupListenResources = useCallback(() => {
+  const cleanupListenResources = useCallback((ws?: WebSocket) => {
+    if (ws && refs.current.ws !== ws) return;
     refs.current.player?.close();
     refs.current = {};
   }, []);
@@ -323,12 +324,13 @@ export function useListenSession(eventId: string) {
       refs.current = { ws, player, intentionalClose: false };
 
       ws.onmessage = (e) => {
+        if (refs.current.ws !== ws) return;
         const result = parseWireFrame(e.data);
         if (result.kind === "ignore") return;
         if (result.kind === "invalid") {
           setError(INVALID_SERVER_MESSAGE);
           setStatus("error");
-          cleanupListenResources();
+          cleanupListenResources(ws);
           closeInvalidServerFrame(ws);
           return;
         }
@@ -341,7 +343,7 @@ export function useListenSession(eventId: string) {
           } catch {
             setError(INVALID_SERVER_MESSAGE);
             setStatus("error");
-            cleanupListenResources();
+            cleanupListenResources(ws);
             closeInvalidServerFrame(ws);
           }
         } else if (frame.type === "caption") {
@@ -352,14 +354,16 @@ export function useListenSession(eventId: string) {
         }
       };
       ws.onerror = () => {
+        if (refs.current.ws !== ws) return;
         if (!refs.current.intentionalClose) {
           setError("Connection error. Is the event live?");
           setStatus("error");
         }
       };
       ws.onclose = () => {
+        if (refs.current.ws !== ws) return;
         const intentionalClose = refs.current.intentionalClose;
-        cleanupListenResources();
+        cleanupListenResources(ws);
         if (!intentionalClose) setStatus((s) => (s === "error" ? s : "ended"));
       };
     },
