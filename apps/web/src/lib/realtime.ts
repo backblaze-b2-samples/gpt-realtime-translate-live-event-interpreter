@@ -19,20 +19,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { wsUrl } from "@/lib/api-client";
+import { parseWireFrame } from "@/lib/realtime-frames";
 
 export const REALTIME_SAMPLE_RATE = 24_000;
-
-// --- wire frames (backend -> browser) ---
-
-interface WireFrame {
-  type: "ready" | "audio" | "caption" | "attendees" | "close";
-  lang?: string | null;
-  payload?: string;
-  is_final?: boolean;
-  count?: number;
-  code?: number;
-  reason?: string;
-}
 
 export interface CaptionLine {
   id: string;
@@ -44,6 +33,13 @@ export type SessionStatus = "idle" | "connecting" | "live" | "ended" | "error";
 
 const SOURCE_KEY = "source";
 const langKey = (lang: string | null | undefined) => lang ?? SOURCE_KEY;
+const INVALID_SERVER_MESSAGE = "Received an invalid server message.";
+
+function closeInvalidServerFrame(ws: WebSocket): void {
+  if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+    ws.close(1002, "Invalid server message");
+  }
+}
 
 // --- audio helpers ---
 
@@ -227,7 +223,14 @@ export function useSpeakerSession() {
       };
 
       ws.onmessage = (e) => {
-        const frame: WireFrame = JSON.parse(e.data as string);
+        const frame = parseWireFrame(e.data);
+        if (!frame) {
+          setError(INVALID_SERVER_MESSAGE);
+          setStatus("error");
+          closeInvalidServerFrame(ws);
+          return;
+        }
+
         if (frame.type === "ready") setStatus("live");
         else if (frame.type === "attendees") setAttendees(frame.count ?? 0);
         else if (frame.type === "caption") captions.apply(frame.lang, frame.payload ?? "", !!frame.is_final);
@@ -301,11 +304,26 @@ export function useListenSession(eventId: string) {
       refs.current = { ws, player, intentionalClose: false };
 
       ws.onmessage = (e) => {
-        const frame: WireFrame = JSON.parse(e.data as string);
+        const frame = parseWireFrame(e.data);
+        if (!frame) {
+          setError(INVALID_SERVER_MESSAGE);
+          setStatus("error");
+          closeInvalidServerFrame(ws);
+          return;
+        }
+
         if (frame.type === "ready") setStatus("live");
-        else if (frame.type === "audio") player.enqueue(frame.payload ?? "");
-        else if (frame.type === "caption") captions.apply(frame.lang, frame.payload ?? "", !!frame.is_final);
-        else if (frame.type === "close") {
+        else if (frame.type === "audio") {
+          try {
+            player.enqueue(frame.payload ?? "");
+          } catch {
+            setError(INVALID_SERVER_MESSAGE);
+            setStatus("error");
+            closeInvalidServerFrame(ws);
+          }
+        } else if (frame.type === "caption") {
+          captions.apply(frame.lang, frame.payload ?? "", !!frame.is_final);
+        } else if (frame.type === "close") {
           setError(frame.reason ?? "This stream is not available.");
           setStatus("error");
         }

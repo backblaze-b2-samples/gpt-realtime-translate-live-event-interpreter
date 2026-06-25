@@ -66,6 +66,7 @@ The browser talks only to our API; the API bridges to OpenAI (one upstream `gpt-
 - **No `OPENAI_API_KEY`** — `connect()` raises and the speaker socket closes with `4001`; the rest of the app stays usable. The API also logs a warning at startup.
 - **Speaker disconnects mid-event** — the broadcast tears down and the partial transcript is already persisted, so attendees who joined late still have a record.
 - **Attendee picks an unsupported language** — the socket closes with `4002`.
+- **Malformed server frames** — the speaker and attendee clients validate incoming JSON frames, show an error state, and close the socket with protocol error `1002` instead of throwing in the browser.
 - **Single-instance only** — the session registry is in-memory; multi-instance needs shared state (see [RELIABILITY.md](../RELIABILITY.md)).
 
 ## Tests
@@ -75,6 +76,7 @@ The browser talks only to our API; the API bridges to OpenAI (one upstream `gpt-
 - `services/api/tests/test_structure.py::test_no_websocket_business_logic` — `runtime/live.py` drives `service.realtime_session`, never `repo/`.
 - `apps/web/e2e/live-speaker-smoke.spec.ts` — speaker form renders.
 - `apps/web/e2e/attendee-language-pick.spec.ts` — attendee page renders.
+- `apps/web/e2e/realtime-frames.spec.ts` — client-side WebSocket frame validation rejects malformed server messages.
 
 ## Related
 
