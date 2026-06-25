@@ -1,13 +1,18 @@
 import type { PcmPlayerFailureReason } from "@/lib/realtime-audio";
+import type { CaptionApplyFailureReason } from "@/lib/realtime-captions";
+import {
+  INVALID_SERVER_FRAME_CLOSE_CODE,
+  INVALID_SERVER_FRAME_CLOSE_REASON_PREFIX,
+  INVALID_SERVER_MESSAGE,
+} from "@/lib/realtime-constants";
 import type { InvalidWireFrameReason } from "@/lib/realtime-frames";
 
-export const INVALID_SERVER_MESSAGE = "Received an invalid server message.";
-
-const INVALID_SERVER_FRAME_CLOSE_CODE = 4004;
+export { INVALID_SERVER_MESSAGE };
 
 type InvalidServerMessageReason =
   | InvalidWireFrameReason
   | PcmPlayerFailureReason
+  | CaptionApplyFailureReason
   | "audio-playback-failed";
 
 export function closeInvalidServerFrame(
@@ -20,7 +25,7 @@ export function closeInvalidServerFrame(
   try {
     ws.close(
       INVALID_SERVER_FRAME_CLOSE_CODE,
-      `invalid-server-frame:${reason}`,
+      `${INVALID_SERVER_FRAME_CLOSE_REASON_PREFIX}${reason}`,
     );
   } catch {
     try {

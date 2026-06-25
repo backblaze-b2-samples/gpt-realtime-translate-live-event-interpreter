@@ -1,7 +1,12 @@
 import { expect, type Page } from "@playwright/test";
 
-export const INVALID_SERVER_MESSAGE = "Received an invalid server message.";
-export const INVALID_SERVER_FRAME_CLOSE_CODE = 4004;
+import {
+  INVALID_SERVER_FRAME_CLOSE_CODE,
+  INVALID_SERVER_FRAME_CLOSE_REASON_PREFIX,
+  INVALID_SERVER_MESSAGE,
+} from "../src/lib/realtime-constants";
+
+export { INVALID_SERVER_MESSAGE };
 
 export type MockMessage =
   | { kind: "arrayBuffer" }
@@ -9,22 +14,44 @@ export type MockMessage =
 
 type CloseCall = { code?: number; reason?: string };
 
+type RealtimeMockOptions = {
+  mediaDelaysMs?: number[];
+  resumeDelaysMs?: number[];
+};
+
 export function invalidCloseReason(reason: string): string {
-  return `invalid-server-frame:${reason}`;
+  return `${INVALID_SERVER_FRAME_CLOSE_REASON_PREFIX}${reason}`;
 }
 
-export async function installRealtimeMocks(page: Page, messages: MockMessage[]) {
-  await page.addInitScript((mockMessages) => {
+export async function installRealtimeMocks(
+  page: Page,
+  messages: MockMessage[],
+  options: RealtimeMockOptions = {},
+) {
+  await page.addInitScript(({ mockMessages, mockOptions }) => {
     const state = window as typeof window & {
       __audioBufferCreateCount: number;
       __audioCloseCount: number;
+      __audioResumeDelaysMs: number[];
       __audioSourceStartCount: number;
+      __mediaDelaysMs: number[];
+      __mediaStopCount: number;
       __wsCloseCalls: CloseCall[];
+      __wsSendCalls: Array<{ data: unknown; url: string }>;
+      __wsUrls: string[];
     };
     state.__audioBufferCreateCount = 0;
     state.__audioCloseCount = 0;
+    state.__audioResumeDelaysMs = [...(mockOptions.resumeDelaysMs ?? [])];
     state.__audioSourceStartCount = 0;
+    state.__mediaDelaysMs = [...(mockOptions.mediaDelaysMs ?? [])];
+    state.__mediaStopCount = 0;
     state.__wsCloseCalls = [];
+    state.__wsSendCalls = [];
+    state.__wsUrls = [];
+
+    const delay = (ms: number) =>
+      new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
     class MockAudioContext {
       currentTime = 0;
@@ -37,8 +64,10 @@ export async function installRealtimeMocks(page: Page, messages: MockMessage[]) 
       }
 
       resume() {
-        this.state = "running";
-        return Promise.resolve();
+        const ms = state.__audioResumeDelaysMs.shift() ?? 0;
+        return delay(ms).then(() => {
+          this.state = "running";
+        });
       }
 
       close() {
@@ -94,6 +123,7 @@ export async function installRealtimeMocks(page: Page, messages: MockMessage[]) 
       constructor(url: string) {
         super();
         this.url = url;
+        state.__wsUrls.push(url);
         window.setTimeout(() => {
           this.readyState = MockWebSocket.OPEN;
           this.onopen?.(new Event("open"));
@@ -125,7 +155,9 @@ export async function installRealtimeMocks(page: Page, messages: MockMessage[]) 
         );
       }
 
-      send() {}
+      send(data: unknown) {
+        state.__wsSendCalls.push({ data, url: this.url });
+      }
     }
 
     Object.defineProperty(window, "AudioContext", {
@@ -143,12 +175,21 @@ export async function installRealtimeMocks(page: Page, messages: MockMessage[]) 
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
-        getUserMedia: async () => ({
-          getTracks: () => [{ stop() {} }],
-        }),
+        getUserMedia: async () => {
+          await delay(state.__mediaDelaysMs.shift() ?? 0);
+          return {
+            getTracks: () => [
+              {
+                stop() {
+                  state.__mediaStopCount += 1;
+                },
+              },
+            ],
+          };
+        },
       },
     });
-  }, messages);
+  }, { mockMessages: messages, mockOptions: options });
 }
 
 export async function mockLiveDefaults(page: Page) {
@@ -207,6 +248,30 @@ export async function getAudioStats(page: Page) {
       bufferCreateCount: state.__audioBufferCreateCount,
       closeCount: state.__audioCloseCount,
       sourceStartCount: state.__audioSourceStartCount,
+    };
+  });
+}
+
+export async function getRealtimeMockStats(page: Page) {
+  return page.evaluate(() => {
+    const state = window as typeof window & {
+      __audioCloseCount: number;
+      __mediaStopCount: number;
+      __wsCloseCalls: CloseCall[];
+      __wsSendCalls: Array<{ data: unknown; url: string }>;
+      __wsUrls: string[];
+    };
+    const appWsUrls = state.__wsUrls.filter(
+      (url) => !url.includes("/_next/webpack-hmr"),
+    );
+    return {
+      audioCloseCount: state.__audioCloseCount,
+      mediaStopCount: state.__mediaStopCount,
+      wsCloseCalls: state.__wsCloseCalls,
+      wsSendCalls: state.__wsSendCalls.filter((call) =>
+        appWsUrls.includes(call.url),
+      ),
+      wsUrls: appWsUrls,
     };
   });
 }

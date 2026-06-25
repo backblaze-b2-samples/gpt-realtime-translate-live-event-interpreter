@@ -1,3 +1,9 @@
+import {
+  MAX_WIRE_AUDIO_PCM_BYTES,
+  MAX_WIRE_FRAME_BYTES,
+  MAX_WIRE_TEXT_PAYLOAD_BYTES,
+} from "@/lib/realtime-constants";
+
 export type ReadyRealtimeFrame = {
   type: "ready";
   lang?: string | null;
@@ -45,6 +51,7 @@ export type InvalidWireFrameReason =
   | "payload-too-large"
   | "invalid-reason"
   | "reason-too-large"
+  | "invalid-is-final"
   | "audio-payload-missing"
   | "audio-base64-invalid"
   | "audio-pcm-invalid"
@@ -57,12 +64,9 @@ export type ParseWireFrameResult =
   | { kind: "ignore" }
   | { kind: "invalid"; reason: InvalidWireFrameReason };
 
-const MAX_FRAME_BYTES = 256 * 1024;
-const MAX_TEXT_PAYLOAD_BYTES = 16 * 1024;
 const MAX_LANG_BYTES = 64;
 const MAX_REASON_BYTES = 512;
-const MAX_AUDIO_PCM_BYTES = 96_000;
-const MAX_AUDIO_BASE64_CHARS = Math.ceil(MAX_AUDIO_PCM_BYTES / 3) * 4;
+const MAX_AUDIO_BASE64_CHARS = Math.ceil(MAX_WIRE_AUDIO_PCM_BYTES / 3) * 4;
 const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 type StringFieldResult =
   | { ok: true; value?: string }
@@ -154,7 +158,7 @@ function validateAudioPayload(value: string): AudioPayloadResult {
   if (decodedBytes % 2 !== 0) {
     return { ok: false, reason: "audio-pcm-invalid" };
   }
-  if (decodedBytes > MAX_AUDIO_PCM_BYTES) {
+  if (decodedBytes > MAX_WIRE_AUDIO_PCM_BYTES) {
     return { ok: false, reason: "audio-too-large" };
   }
   return { ok: true };
@@ -168,7 +172,7 @@ export function parseWireFrame(data: unknown): ParseWireFrameResult {
   if (typeof data !== "string") {
     return invalid("non-text-data");
   }
-  if (exceedsUtf8ByteLimit(data, MAX_FRAME_BYTES)) {
+  if (exceedsUtf8ByteLimit(data, MAX_WIRE_FRAME_BYTES)) {
     return invalid("frame-too-large");
   }
 
@@ -185,7 +189,7 @@ export function parseWireFrame(data: unknown): ParseWireFrameResult {
   if (!isWireFrameType(parsed.type)) return { kind: "ignore" };
 
   const payloadLimit =
-    parsed.type === "audio" ? MAX_AUDIO_BASE64_CHARS : MAX_TEXT_PAYLOAD_BYTES;
+    parsed.type === "audio" ? MAX_AUDIO_BASE64_CHARS : MAX_WIRE_TEXT_PAYLOAD_BYTES;
   const lang = readOptionalNullableString(parsed.lang, MAX_LANG_BYTES);
   const payload = readOptionalString(parsed.payload, payloadLimit);
   const reason = readOptionalString(parsed.reason, MAX_REASON_BYTES);
@@ -203,8 +207,10 @@ export function parseWireFrame(data: unknown): ParseWireFrameResult {
     return invalid(reason.reason === "too-large" ? "reason-too-large" : "invalid-reason");
   }
 
-  const isFinal =
-    typeof parsed.is_final === "boolean" ? parsed.is_final : undefined;
+  if (parsed.is_final !== undefined && typeof parsed.is_final !== "boolean") {
+    return invalid("invalid-is-final");
+  }
+  const isFinal = parsed.is_final;
 
   if (parsed.type === "ready") {
     return { kind: "frame", frame: { type: "ready", lang: lang.value } };

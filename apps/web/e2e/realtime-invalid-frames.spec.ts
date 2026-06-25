@@ -73,6 +73,19 @@ const invalidSpeakerFrames: Array<{
     },
     reason: "reason-too-large",
   },
+  {
+    name: "non-boolean is_final",
+    message: {
+      kind: "text",
+      data: JSON.stringify({
+        type: "caption",
+        lang: "es",
+        payload: "done",
+        is_final: "true",
+      }),
+    },
+    reason: "invalid-is-final",
+  },
 ];
 
 for (const { name, message, reason } of invalidSpeakerFrames) {
