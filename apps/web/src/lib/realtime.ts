@@ -34,10 +34,19 @@ export type SessionStatus = "idle" | "connecting" | "live" | "ended" | "error";
 const SOURCE_KEY = "source";
 const langKey = (lang: string | null | undefined) => lang ?? SOURCE_KEY;
 const INVALID_SERVER_MESSAGE = "Received an invalid server message.";
+const INVALID_SERVER_FRAME_CLOSE_CODE = 4004;
 
 function closeInvalidServerFrame(ws: WebSocket): void {
   if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-    ws.close(1002, "Invalid server message");
+    try {
+      ws.close(INVALID_SERVER_FRAME_CLOSE_CODE, "Invalid server message");
+    } catch {
+      try {
+        ws.close();
+      } catch {
+        /* socket already gone */
+      }
+    }
   }
 }
 
@@ -65,6 +74,7 @@ function float32ToPcm16(input: Float32Array): ArrayBuffer {
 class PcmPlayer {
   private ctx: AudioContext;
   private nextTime = 0;
+  private closed = false;
 
   constructor() {
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -92,7 +102,9 @@ class PcmPlayer {
   }
 
   close(): void {
-    void this.ctx.close();
+    if (this.closed || this.ctx.state === "closed") return;
+    this.closed = true;
+    void this.ctx.close().catch(() => undefined);
   }
 }
 
@@ -223,13 +235,16 @@ export function useSpeakerSession() {
       };
 
       ws.onmessage = (e) => {
-        const frame = parseWireFrame(e.data);
-        if (!frame) {
+        const result = parseWireFrame(e.data);
+        if (result.kind === "ignore") return;
+        if (result.kind === "invalid") {
           setError(INVALID_SERVER_MESSAGE);
           setStatus("error");
           closeInvalidServerFrame(ws);
+          teardown();
           return;
         }
+        const { frame } = result;
 
         if (frame.type === "ready") setStatus("live");
         else if (frame.type === "attendees") setAttendees(frame.count ?? 0);
@@ -277,16 +292,20 @@ export function useListenSession(eventId: string) {
   const captions = useCaptions();
   const refs = useRef<ListenRefs>({});
 
+  const cleanupListenResources = useCallback(() => {
+    refs.current.player?.close();
+    refs.current = {};
+  }, []);
+
   const leave = useCallback(() => {
     const r = refs.current;
     r.intentionalClose = true;
-    r.player?.close();
     if (r.ws && (r.ws.readyState === WebSocket.OPEN || r.ws.readyState === WebSocket.CONNECTING)) {
       r.ws.close();
     }
-    refs.current = {};
+    cleanupListenResources();
     setStatus("ended");
-  }, []);
+  }, [cleanupListenResources]);
 
   const join = useCallback(
     async (targetLang: string) => {
@@ -304,13 +323,16 @@ export function useListenSession(eventId: string) {
       refs.current = { ws, player, intentionalClose: false };
 
       ws.onmessage = (e) => {
-        const frame = parseWireFrame(e.data);
-        if (!frame) {
+        const result = parseWireFrame(e.data);
+        if (result.kind === "ignore") return;
+        if (result.kind === "invalid") {
           setError(INVALID_SERVER_MESSAGE);
           setStatus("error");
+          cleanupListenResources();
           closeInvalidServerFrame(ws);
           return;
         }
+        const { frame } = result;
 
         if (frame.type === "ready") setStatus("live");
         else if (frame.type === "audio") {
@@ -319,6 +341,7 @@ export function useListenSession(eventId: string) {
           } catch {
             setError(INVALID_SERVER_MESSAGE);
             setStatus("error");
+            cleanupListenResources();
             closeInvalidServerFrame(ws);
           }
         } else if (frame.type === "caption") {
@@ -335,10 +358,12 @@ export function useListenSession(eventId: string) {
         }
       };
       ws.onclose = () => {
-        if (!refs.current.intentionalClose) setStatus((s) => (s === "error" ? s : "ended"));
+        const intentionalClose = refs.current.intentionalClose;
+        cleanupListenResources();
+        if (!intentionalClose) setStatus((s) => (s === "error" ? s : "ended"));
       };
     },
-    [eventId, captions, leave],
+    [eventId, captions, cleanupListenResources, leave],
   );
 
   useEffect(() => () => leave(), [leave]);
