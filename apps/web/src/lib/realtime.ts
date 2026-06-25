@@ -196,6 +196,20 @@ export function useSpeakerSession() {
       setError(null);
       captions.reset();
       setStatus("connecting");
+      const previous = refs.current;
+      previous.intentionalClose = true;
+      if (
+        previous.ws &&
+        (previous.ws.readyState === WebSocket.OPEN ||
+          previous.ws.readyState === WebSocket.CONNECTING)
+      ) {
+        try {
+          previous.ws.close();
+        } catch {
+          /* socket already gone */
+        }
+      }
+      teardown();
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -212,6 +226,16 @@ export function useSpeakerSession() {
       refs.current = { ws, ctx, stream, intentionalClose: false };
 
       ws.onopen = () => {
+        if (refs.current.ws !== ws) {
+          stream.getTracks().forEach((t) => t.stop());
+          if (ctx.state !== "closed") void ctx.close().catch(() => undefined);
+          try {
+            ws.close();
+          } catch {
+            /* socket already gone */
+          }
+          return;
+        }
         ws.send(
           JSON.stringify({
             title: cfg.title,
@@ -235,6 +259,7 @@ export function useSpeakerSession() {
       };
 
       ws.onmessage = (e) => {
+        if (refs.current.ws !== ws) return;
         const result = parseWireFrame(e.data);
         if (result.kind === "ignore") return;
         if (result.kind === "invalid") {
@@ -256,6 +281,7 @@ export function useSpeakerSession() {
       };
 
       ws.onerror = () => {
+        if (refs.current.ws !== ws) return;
         if (!refs.current.intentionalClose) {
           setError("Connection error. Is the API running?");
           setStatus("error");
@@ -263,6 +289,7 @@ export function useSpeakerSession() {
       };
 
       ws.onclose = () => {
+        if (refs.current.ws !== ws) return;
         if (!refs.current.intentionalClose) {
           setStatus((s) => (s === "error" ? s : "ended"));
         }
