@@ -21,7 +21,7 @@ import contextlib
 import json
 import logging
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from app.runtime.metrics import (
     record_attendee_joined,
@@ -37,7 +37,7 @@ from app.service.realtime_session import (
     start_session,
 )
 from app.types.realtime_wire import (
-    MAX_WIRE_AUDIO_PCM_BYTES,
+    MAX_WIRE_AUDIO_BASE64_CHARS,
     MAX_WIRE_TEXT_PAYLOAD_BYTES,
 )
 
@@ -56,7 +56,7 @@ async def _close_with_reason(ws: WebSocket, code: int, reason: str) -> None:
     with contextlib.suppress(Exception):
         await ws.send_json({"type": "close", "code": code, "reason": reason})
     with contextlib.suppress(Exception):
-        await ws.close(code=status.WS_1011_INTERNAL_ERROR)
+        await ws.close(code=code)
 
 
 def _frame_for_payload(chunk, payload: str) -> dict:
@@ -93,18 +93,21 @@ def _text_payload_chunks(payload: str) -> list[str]:
 
 def _audio_payload_chunks(payload: str) -> list[str]:
     """Split base64 PCM by decoded bytes so browser playback caps are meaningful."""
-    try:
-        decoded = base64.b64decode(payload, validate=True)
-    except Exception:
-        return [payload]
-    if not decoded:
-        return [payload]
-    return [
-        base64.b64encode(decoded[start : start + MAX_WIRE_AUDIO_PCM_BYTES]).decode(
-            "ascii"
-        )
-        for start in range(0, len(decoded), MAX_WIRE_AUDIO_PCM_BYTES)
-    ]
+    if not payload:
+        return []
+    chunks: list[str] = []
+    for start in range(0, len(payload), MAX_WIRE_AUDIO_BASE64_CHARS):
+        encoded = payload[start : start + MAX_WIRE_AUDIO_BASE64_CHARS]
+        padded = encoded + ("=" * (-len(encoded) % 4))
+        try:
+            decoded = base64.b64decode(padded, validate=True)
+        except Exception:
+            return []
+        if len(decoded) % 2:
+            decoded = decoded[:-1]
+        if decoded:
+            chunks.append(base64.b64encode(decoded).decode("ascii"))
+    return chunks
 
 
 def _chunk_frames(chunk) -> list[dict]:
