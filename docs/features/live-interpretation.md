@@ -51,7 +51,7 @@ The browser talks only to our API; the API bridges to OpenAI (one upstream `gpt-
 | `4001` | Session can't start — missing/invalid `OPENAI_API_KEY` or upstream failed to open |
 | `4002` | Invalid input — malformed event id / language, or language not offered |
 | `4003` | No active session for this event (not started or already ended) |
-| `4004` | Client detected an invalid server frame and closed the socket |
+| `4004` | Client detected an invalid server frame or unsafe audio playback condition and closed the socket. The close reason is `invalid-server-frame:<reason-code>`; reason codes are stable diagnostics such as `malformed-json`, `non-text-data`, `payload-too-large`, `audio-base64-invalid`, `audio-too-large`, or `audio-buffer-overflow`. Raw frame payloads are never included. |
 
 ## Flow
 
@@ -67,7 +67,8 @@ The browser talks only to our API; the API bridges to OpenAI (one upstream `gpt-
 - **No `OPENAI_API_KEY`** — `connect()` raises and the speaker socket closes with `4001`; the rest of the app stays usable. The API also logs a warning at startup.
 - **Speaker disconnects mid-event** — the broadcast tears down and the partial transcript is already persisted, so attendees who joined late still have a record.
 - **Attendee picks an unsupported language** — the socket closes with `4002`.
-- **Malformed server frames** — the speaker and attendee clients validate incoming JSON frames, ignore unknown additive frame types, show an error state for invalid known frames, and close with app code `4004` instead of throwing in the browser.
+- **Malformed server frames** — the speaker and attendee clients validate incoming JSON frames, ignore unknown additive frame types, show an error state for invalid known frames, and close with app code `4004` plus a low-cardinality diagnostic close reason instead of throwing in the browser.
+- **Audio-frame floods** — attendee playback caps scheduled translated audio at 10 seconds. A flood of individually valid audio frames closes with `4004` / `invalid-server-frame:audio-buffer-overflow` before allocating more decoded samples or `AudioBuffer`s.
 - **Single-instance only** — the session registry is in-memory; multi-instance needs shared state (see [RELIABILITY.md](../RELIABILITY.md)).
 
 ## Tests

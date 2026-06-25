@@ -1,142 +1,23 @@
 "use client";
 
-/**
- * Client-side WebSocket + Web Audio glue for the live-interpretation surface.
- *
- * The browser talks to OUR API (which bridges to OpenAI) — never to OpenAI
- * directly, so the key stays server-side. Two hooks:
- *
- *   - `useSpeakerSession` — capture mic -> 24 kHz PCM16 -> `/events/{id}/speaker`,
- *     and render the live caption preview + attendee count streamed back.
- *   - `useListenSession`  — `/events/{id}/listen?lang=` -> play translated PCM16
- *     audio and render live captions for the chosen language.
- *
- * Audio format matches the gpt-realtime-translate I/O contract: little-endian
- * PCM16, mono, 24 kHz. We run the AudioContext at 24 kHz so the browser
- * resamples mic input for us (Chrome/Edge honor the sampleRate hint).
- */
-
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { wsUrl } from "@/lib/api-client";
+import { useCaptions } from "@/lib/realtime-captions";
+import {
+  closeInvalidServerFrame,
+  INVALID_SERVER_MESSAGE,
+} from "@/lib/realtime-errors";
+import {
+  float32ToPcm16,
+  PcmPlayer,
+  REALTIME_SAMPLE_RATE,
+} from "@/lib/realtime-audio";
 import { parseWireFrame } from "@/lib/realtime-frames";
 
-export const REALTIME_SAMPLE_RATE = 24_000;
-
-export interface CaptionLine {
-  id: string;
-  lang: string; // "source" for the original-language transcript
-  text: string;
-}
+export type { CaptionLine } from "@/lib/realtime-captions";
 
 export type SessionStatus = "idle" | "connecting" | "live" | "ended" | "error";
-
-const SOURCE_KEY = "source";
-const langKey = (lang: string | null | undefined) => lang ?? SOURCE_KEY;
-const INVALID_SERVER_MESSAGE = "Received an invalid server message.";
-const INVALID_SERVER_FRAME_CLOSE_CODE = 4004;
-
-function closeInvalidServerFrame(ws: WebSocket): void {
-  if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-    try {
-      ws.close(INVALID_SERVER_FRAME_CLOSE_CODE, "Invalid server message");
-    } catch {
-      try {
-        ws.close();
-      } catch {
-        /* socket already gone */
-      }
-    }
-  }
-}
-
-// --- audio helpers ---
-
-/** Decode a base64 PCM16 payload into an Int16Array of samples. */
-function base64ToInt16(b64: string): Int16Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Int16Array(bytes.buffer, 0, Math.floor(bytes.byteLength / 2));
-}
-
-/** Convert a Float32 mic frame [-1,1] into little-endian PCM16 bytes. */
-function float32ToPcm16(input: Float32Array): ArrayBuffer {
-  const pcm = new Int16Array(input.length);
-  for (let i = 0; i < input.length; i++) {
-    const s = Math.max(-1, Math.min(1, input[i]));
-    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  return pcm.buffer;
-}
-
-/** Gap-free sequential player for incoming PCM16 chunks. */
-class PcmPlayer {
-  private ctx: AudioContext;
-  private nextTime = 0;
-  private closed = false;
-
-  constructor() {
-    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    this.ctx = new Ctx({ sampleRate: REALTIME_SAMPLE_RATE });
-  }
-
-  async resume(): Promise<void> {
-    if (this.ctx.state === "suspended") await this.ctx.resume();
-  }
-
-  enqueue(b64: string): void {
-    const int16 = base64ToInt16(b64);
-    if (int16.length === 0) return;
-    const f32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 0x8000;
-    const buffer = this.ctx.createBuffer(1, f32.length, this.ctx.sampleRate);
-    buffer.copyToChannel(f32, 0);
-    const source = this.ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(this.ctx.destination);
-    const now = this.ctx.currentTime;
-    if (this.nextTime < now) this.nextTime = now + 0.06; // small jitter buffer
-    source.start(this.nextTime);
-    this.nextTime += buffer.duration;
-  }
-
-  close(): void {
-    if (this.closed || this.ctx.state === "closed") return;
-    this.closed = true;
-    void this.ctx.close().catch(() => undefined);
-  }
-}
-
-// --- caption accumulation (shared by both hooks) ---
-
-function useCaptions() {
-  const [committed, setCommitted] = useState<CaptionLine[]>([]);
-  const [interim, setInterim] = useState<Record<string, string>>({});
-
-  const apply = useCallback((lang: string | null | undefined, payload: string, isFinal: boolean) => {
-    const key = langKey(lang);
-    if (isFinal) {
-      const text = payload.trim();
-      setInterim((prev) => ({ ...prev, [key]: "" }));
-      if (text) {
-        setCommitted((prev) => [
-          ...prev.slice(-99),
-          { id: crypto.randomUUID(), lang: key, text },
-        ]);
-      }
-    } else {
-      setInterim((prev) => ({ ...prev, [key]: (prev[key] ?? "") + payload }));
-    }
-  }, []);
-
-  const reset = useCallback(() => {
-    setCommitted([]);
-    setInterim({});
-  }, []);
-
-  return { committed, interim, apply, reset };
-}
 
 // --- speaker ---
 
@@ -265,15 +146,17 @@ export function useSpeakerSession() {
         if (result.kind === "invalid") {
           setError(INVALID_SERVER_MESSAGE);
           setStatus("error");
-          closeInvalidServerFrame(ws);
+          closeInvalidServerFrame(ws, result.reason);
           teardown();
           return;
         }
         const { frame } = result;
 
         if (frame.type === "ready") setStatus("live");
-        else if (frame.type === "attendees") setAttendees(frame.count ?? 0);
-        else if (frame.type === "caption") captions.apply(frame.lang, frame.payload ?? "", !!frame.is_final);
+        else if (frame.type === "attendees") setAttendees(frame.count);
+        else if (frame.type === "caption") {
+          captions.apply(frame.lang, frame.payload, frame.is_final ?? false);
+        }
         else if (frame.type === "close") {
           setError(frame.reason ?? "Session closed by server.");
           setStatus("error");
@@ -358,7 +241,7 @@ export function useListenSession(eventId: string) {
           setError(INVALID_SERVER_MESSAGE);
           setStatus("error");
           cleanupListenResources(ws);
-          closeInvalidServerFrame(ws);
+          closeInvalidServerFrame(ws, result.reason);
           return;
         }
         const { frame } = result;
@@ -366,15 +249,21 @@ export function useListenSession(eventId: string) {
         if (frame.type === "ready") setStatus("live");
         else if (frame.type === "audio") {
           try {
-            player.enqueue(frame.payload ?? "");
+            const enqueueResult = player.enqueue(frame.payload);
+            if (!enqueueResult.ok) {
+              setError(INVALID_SERVER_MESSAGE);
+              setStatus("error");
+              cleanupListenResources(ws);
+              closeInvalidServerFrame(ws, enqueueResult.reason);
+            }
           } catch {
             setError(INVALID_SERVER_MESSAGE);
             setStatus("error");
             cleanupListenResources(ws);
-            closeInvalidServerFrame(ws);
+            closeInvalidServerFrame(ws, "audio-playback-failed");
           }
         } else if (frame.type === "caption") {
-          captions.apply(frame.lang, frame.payload ?? "", !!frame.is_final);
+          captions.apply(frame.lang, frame.payload, frame.is_final ?? false);
         } else if (frame.type === "close") {
           setError(frame.reason ?? "This stream is not available.");
           setStatus("error");
