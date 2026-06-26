@@ -39,7 +39,7 @@ def setting_attr_for_env(env_name: str) -> str:
 def _normalize_env_files(env_file) -> tuple[Path, ...]:
     if env_file is None:
         return ()
-    if isinstance(env_file, str | os.PathLike):
+    if isinstance(env_file, (str, os.PathLike)):
         return (Path(env_file),)
     return tuple(Path(path) for path in env_file if path)
 
