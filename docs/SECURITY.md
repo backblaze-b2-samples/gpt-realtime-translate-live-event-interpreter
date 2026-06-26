@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-05-28 -->
+<!-- last_verified: 2026-06-26 -->
 # Security
 
 Security principles and implementation for the gpt-realtime-translate-live-event-interpreter.

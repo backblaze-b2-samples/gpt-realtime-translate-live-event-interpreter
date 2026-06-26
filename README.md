@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-05-28 -->
+<!-- last_verified: 2026-06-26 -->
 # GPT-Realtime-Translate Live Event Interpreter
 
 A real-time **live event interpreter** built on OpenAI's GPT-Realtime-Translate and Backblaze B2. A speaker talks into the browser; attendees pick a target language and receive translated audio plus captions streamed back to them with low latency. Every event archives to B2 as a rich multi-artifact bundle: source audio, source transcript, per-language captions (VTT/SRT), per-language translated transcripts, and (optionally) the translated audio itself.

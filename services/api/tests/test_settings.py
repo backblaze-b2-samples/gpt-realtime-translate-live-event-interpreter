@@ -189,9 +189,13 @@ def test_b2_legacy_usage_skips_dotenv_when_disabled(monkeypatch):
 @pytest.mark.parametrize(
     "region",
     [
+        "attacker.example/",
         "attacker.example:443/collect",
         "https://attacker.example",
+        "us-west-004.backblazeb2.com@attacker.example/",
         "us" + "-west-004/../x",
+        "us-test-001?x=1",
+        "us-test-001#fragment",
         " us-test-001",
         "us-test-001 ",
         "user@us-test-001",
@@ -206,11 +210,17 @@ def test_b2_region_rejects_host_breaking_payloads(monkeypatch, region):
 
 
 def test_b2_env_contract_matches_settings_env_example_and_doctor(monkeypatch):
+    from main import REQUIRED_B2_SETTINGS
+
     clear_b2_env(monkeypatch)
     settings = Settings(_env_file=None)
     env_example = (REPO_ROOT / ".env.example").read_text()
     doctor = (REPO_ROOT / "scripts" / "doctor.mjs").read_text()
 
+    required_startup_env = tuple(
+        env_name for _, env_name in REQUIRED_B2_SETTINGS
+    )
+    assert required_startup_env == B2_REQUIRED_ENV
     for env_name in B2_REQUIRED_ENV + B2_OPTIONAL_ENV:
         assert hasattr(settings, setting_attr_for_env(env_name))
         assert f"{env_name}=" in env_example
