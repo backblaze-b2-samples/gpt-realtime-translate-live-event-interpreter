@@ -2,6 +2,11 @@
 
 **Source-kit override:** The user instructed us to use **`ai-audio-starter-kit`** as the template instead of the default `vibe-coding-starter-kit`. The fresh clone lives at `.claude/scratch/aask-dea55654-f9d9-4e99-90c2-3f585d4d9b56/` and is the sole source of truth for all keep/trim/add decisions below. The builder and reviewer subagents must ignore the sibling `../ai-audio-starter-kit` checkout entirely.
 
+> Post-scaffold note (issue #3): the B2 env-name contract changed after this
+> scaffold was completed. See `docs/exec-plans/completed/issue-3-b2-standards.md`
+> for the migration record. Any legacy B2 env names below are historical
+> scaffold context and are superseded by the issue #3 migration.
+
 **Source issue:** `backblaze-labs/demand-side-ai#174`
 
 ---

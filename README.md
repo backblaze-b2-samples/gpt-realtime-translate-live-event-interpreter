@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-05-28 -->
+<!-- last_verified: 2026-06-26 -->
 # GPT-Realtime-Translate Live Event Interpreter
 
 A real-time **live event interpreter** built on OpenAI's GPT-Realtime-Translate and Backblaze B2. A speaker talks into the browser; attendees pick a target language and receive translated audio plus captions streamed back to them with low latency. Every event archives to B2 as a rich multi-artifact bundle: source audio, source transcript, per-language captions (VTT/SRT), per-language translated transcripts, and (optionally) the translated audio itself.
@@ -110,12 +110,12 @@ cp .env.example .env
 
 Open `.env` and fill in:
 
-- **Backblaze B2** — five required keys. From the [Backblaze B2 dashboard](https://secure.backblaze.com/b2_buckets.htm?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-gpt-realtime-translate-live-event-interpreter), create a bucket and an application key:
+- **Backblaze B2** — four required keys plus an optional public URL base. From the [Backblaze B2 dashboard](https://secure.backblaze.com/b2_buckets.htm?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-gpt-realtime-translate-live-event-interpreter), create a bucket and an application key:
   - **Bucket Unique Name** -> `B2_BUCKET_NAME`
-  - **Endpoint** -> `B2_ENDPOINT`
   - **Region** (path segment of the endpoint, e.g. `us-west-004`) -> `B2_REGION`
-  - **keyID** -> `B2_KEY_ID`
+  - **keyID** -> `B2_APPLICATION_KEY_ID`
   - **applicationKey** -> `B2_APPLICATION_KEY`
+  - Optional public bucket or CDN base URL -> `B2_PUBLIC_URL_BASE`
 - **OpenAI** — required for live interpretation only. Get a key at https://platform.openai.com/api-keys:
   - `OPENAI_API_KEY` -> your key
   - `OPENAI_REALTIME_MODEL` -> defaults to `gpt-realtime-translate`

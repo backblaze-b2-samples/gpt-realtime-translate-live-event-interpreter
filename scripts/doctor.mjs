@@ -1,14 +1,4 @@
 #!/usr/bin/env node
-// Preflight environment check — runs automatically before `pnpm dev`.
-// Surfaces every common starter-kit setup gotcha *before* uvicorn or
-// next try to start, with actionable error messages.
-//
-// Zero dependencies (uses only node:* core modules) so this works on a
-// fresh clone before anyone has run `pnpm install`.
-//
-// Run directly:  node scripts/doctor.mjs
-// Run via pnpm:  pnpm doctor
-
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { execSync } from "node:child_process";
@@ -18,38 +8,28 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENV_FILE = resolve(REPO_ROOT, ".env");
 const VENV_UVICORN = resolve(REPO_ROOT, "services/api/.venv/bin/uvicorn");
+const B2_ENV_CONTRACT = JSON.parse(
+  readFileSync(resolve(REPO_ROOT, "config/b2-env-contract.json"), "utf8"),
+);
 
 // Required minimum versions. Bump as upstream support shifts.
 const REQUIRED_NODE_MAJOR = 20;
 const REQUIRED_PNPM_MAJOR = 9;
 const REQUIRED_PYTHON_MINOR = 11; // 3.11+
 
-// Required B2 env vars + the exact placeholder strings shipped in
-// .env.example. Keep in sync with services/api/main.py REQUIRED_B2_SETTINGS
-// and PLACEHOLDER_VALUES.
-const REQUIRED_B2_VARS = [
-  "B2_ENDPOINT",
-  "B2_REGION",
-  "B2_KEY_ID",
-  "B2_APPLICATION_KEY",
-  "B2_BUCKET_NAME",
-];
-// OpenAI Realtime is required for the live-interpretation feature. We surface
-// the same preflight failure shape as the B2 keys — the rest of the app
-// (events explorer, /files, dashboard) still works without it, but `pnpm dev`
-// is the moment to call out the gap loudly so users don't hit it mid-demo.
+const REQUIRED_B2_VARS = B2_ENV_CONTRACT.required;
+const LEGACY_B2_ENV_ALIASES = B2_ENV_CONTRACT.legacyAliases;
 const REQUIRED_OPENAI_VARS = ["OPENAI_API_KEY"];
 const PLACEHOLDERS = new Set([
-  "your_b2_endpoint",
   "your_b2_region",
+  "your_application_key_id",
   "your_key_id",
+  "your_b2_endpoint",
   "your_application_key",
   "your-bucket-name",
   "your_openai_api_key",
 ]);
 
-// Only Next.js: `pnpm dev` self-heals the API side via scripts/pick-port.mjs,
-// so warning about 8000 here would just duplicate dev.sh's own banner.
 const PORTS_TO_CHECK = [{ port: 3000, name: "Next.js dev server" }];
 
 const failures = [];
@@ -72,7 +52,6 @@ function tryExec(cmd) {
 }
 
 function parseSemver(s) {
-  // Pulls "v20.10.0" / "20.10.0" / "9.15.0" / "Python 3.13.5" — lenient.
   const match = s.match(/(\d+)\.(\d+)\.(\d+)/);
   if (!match) return null;
   return { major: +match[1], minor: +match[2], patch: +match[3] };
@@ -106,11 +85,6 @@ function checkPnpm() {
 }
 
 function checkPython() {
-  // Try python3 first (canonical on macOS/Linux), then versioned names that
-  // Homebrew installs (python3.13, python3.12, python3.11), then the bare
-  // python shim (Windows / pyenv). Stop at the first one that satisfies the
-  // minimum version — this avoids false failures on macOS where `python3`
-  // resolves to the system 3.9 even when a newer Homebrew Python is on PATH.
   const candidates = [
     "python3",
     "python3.13",
@@ -124,7 +98,6 @@ function checkPython() {
     const v = parseSemver(out);
     if (v && v.major >= 3 && v.minor >= REQUIRED_PYTHON_MINOR) return; // good
   }
-  // Nothing suitable found — report using the first candidate that exists.
   const found = candidates.map((b) => tryExec(`${b} --version`)).find(Boolean);
   if (found) {
     fail(
@@ -151,8 +124,6 @@ function checkVenv() {
 }
 
 function parseEnvFile(path) {
-  // Minimal .env parser — enough for KEY=value lines, ignores comments
-  // and quoted strings. We don't need the full dotenv grammar here.
   const out = {};
   const text = readFileSync(path, "utf8");
   for (const raw of text.split("\n")) {
@@ -170,6 +141,20 @@ function parseEnvFile(path) {
   return out;
 }
 
+function legacyNamesFor(standardName) {
+  return Object.entries(LEGACY_B2_ENV_ALIASES)
+    .filter(([, target]) => target === standardName)
+    .map(([legacy]) => legacy);
+}
+
+function requiredB2Value(env, name) {
+  if (env[name]) return env[name];
+  for (const legacyName of legacyNamesFor(name)) {
+    if (env[legacyName]) return env[legacyName];
+  }
+  return "";
+}
+
 function checkEnv() {
   if (!existsSync(ENV_FILE)) {
     fail(
@@ -179,20 +164,43 @@ function checkEnv() {
     return;
   }
   const env = parseEnvFile(ENV_FILE);
-  const missing = REQUIRED_B2_VARS.filter((k) => !env[k]);
+  const missing = REQUIRED_B2_VARS.filter((k) => !requiredB2Value(env, k));
   if (missing.length > 0) {
     fail(
       `.env is missing required B2 variables: ${missing.join(", ")}`,
-      "See .env.example for the full list and edit .env to add them",
+      "See .env.example for the standard names; legacy aliases are accepted only during migration",
     );
   }
-  const placeholders = REQUIRED_B2_VARS.filter(
-    (k) => env[k] && PLACEHOLDERS.has(env[k]),
-  );
+  const placeholders = REQUIRED_B2_VARS.filter((k) => {
+    const value = requiredB2Value(env, k);
+    return value && PLACEHOLDERS.has(value);
+  });
   if (placeholders.length > 0) {
     fail(
       `.env still has placeholder values: ${placeholders.join(", ")}`,
       "Edit .env and replace placeholders with your real B2 credentials (https://secure.backblaze.com/app_keys.htm?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-gpt-realtime-translate-live-event-interpreter)",
+    );
+  }
+  const usedLegacy = [];
+  const staleLegacy = [];
+  for (const [legacyName, standardName] of Object.entries(LEGACY_B2_ENV_ALIASES)) {
+    if (!env[legacyName]) continue;
+    if (standardName && !env[standardName]) {
+      usedLegacy.push(`${legacyName} -> ${standardName}`);
+    } else {
+      staleLegacy.push(legacyName);
+    }
+  }
+  if (usedLegacy.length > 0) {
+    warn(
+      `Legacy B2 variables are in use: ${usedLegacy.join(", ")}`,
+      "Add the standard B2 variables, deploy compatible code, then remove legacy aliases",
+    );
+  }
+  if (staleLegacy.length > 0) {
+    warn(
+      `Stale legacy B2 variables are present and ignored: ${staleLegacy.join(", ")}`,
+      "Remove these after all deployed instances read the standard B2 variables",
     );
   }
   const openaiMissing = REQUIRED_OPENAI_VARS.filter((k) => !env[k]);
@@ -215,7 +223,6 @@ function checkEnv() {
 
 // ----- Network -----
 
-// Try to bind on a single host; resolves to true if EADDRINUSE.
 function isPortBoundOn(port, host) {
   return new Promise((res) => {
     const server = createServer();
@@ -225,12 +232,6 @@ function isPortBoundOn(port, host) {
   });
 }
 
-// We probe the wildcard interfaces (0.0.0.0 and ::) because that's what
-// `next dev` and `uvicorn` actually try to bind to. Probing only the
-// loopbacks misses the common case (on macOS) where a process bound to
-// `::` doesn't conflict with a `127.0.0.1` probe but DOES conflict with
-// `pnpm dev`'s own wildcard bind. If either wildcard is taken, the
-// port is effectively unusable for the dev server.
 async function checkPort({ port, name }) {
   const [v4, v6] = await Promise.all([
     isPortBoundOn(port, "0.0.0.0"),
@@ -278,8 +279,6 @@ async function main() {
     process.exit(1);
   }
 
-  // Warnings only — non-fatal so `pnpm dev` can still proceed if the
-  // user genuinely wants to (e.g. running a second instance).
   console.error("\nProceeding despite warnings.\n");
 }
 

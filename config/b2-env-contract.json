@@ -1,0 +1,16 @@
+{
+  "required": [
+    "B2_APPLICATION_KEY_ID",
+    "B2_APPLICATION_KEY",
+    "B2_BUCKET_NAME",
+    "B2_REGION"
+  ],
+  "optional": [
+    "B2_PUBLIC_URL_BASE"
+  ],
+  "legacyAliases": {
+    "B2_KEY_ID": "B2_APPLICATION_KEY_ID",
+    "B2_PUBLIC_URL": "B2_PUBLIC_URL_BASE",
+    "B2_ENDPOINT": null
+  }
+}

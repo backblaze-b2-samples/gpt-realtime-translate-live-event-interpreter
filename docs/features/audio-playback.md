@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-05-28 -->
+<!-- last_verified: 2026-06-26 -->
 # Feature: Source-Audio Playback
 
 ## Purpose
@@ -27,7 +27,7 @@ Play the archived source audio of a past event directly from B2 in the browser, 
 
 - **No source audio** — service raises `EventNotFound(detail="Source audio not available")` → 404. UI shows the artifact list so the organizer can investigate.
 - **Expired URL during playback** — the user clicks Play again to refresh.
-- **Public bucket configured (`B2_PUBLIC_URL`)** — the public URL is surfaced alongside the presigned one in the manifest; the UI prefers the presigned URL because of the expiry guarantee.
+- **Public bucket configured (`B2_PUBLIC_URL_BASE`)** — the public URL is surfaced alongside the presigned one in the manifest; the UI prefers the presigned URL because of the expiry guarantee.
 
 ## Related
 

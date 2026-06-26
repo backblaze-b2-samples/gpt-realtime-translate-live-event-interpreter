@@ -17,7 +17,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
-from app.config import settings  # noqa: E402
+from app.config import B2_REQUIRED_ENV, setting_attr_for_env, settings  # noqa: E402
 from app.runtime import config as runtime_config  # noqa: E402
 from app.runtime import (  # noqa: E402
     events,
@@ -33,20 +33,16 @@ from app.runtime import (  # noqa: E402
 # `Settings()` instantiation (and therefore `from main import app`) never
 # raises during test collection. We instead fail fast at server startup
 # with a human-readable message.
-REQUIRED_B2_SETTINGS = (
-    ("b2_key_id", "B2_KEY_ID"),
-    ("b2_application_key", "B2_APPLICATION_KEY"),
-    ("b2_bucket_name", "B2_BUCKET_NAME"),
-    ("b2_endpoint", "B2_ENDPOINT"),
-    ("b2_region", "B2_REGION"),
+REQUIRED_B2_SETTINGS = tuple(
+    (setting_attr_for_env(env_name), env_name) for env_name in B2_REQUIRED_ENV
 )
 
 # Exact placeholder strings shipped in .env.example. If a user copied
 # the example and didn't edit it, Settings will pass the "non-empty"
 # check above but every B2 call will still 403. Catch that here.
 PLACEHOLDER_VALUES = frozenset({
-    "your_b2_endpoint",
     "your_b2_region",
+    "your_application_key_id",
     "your_key_id",
     "your_application_key",
     "your-bucket-name",
@@ -56,6 +52,20 @@ PLACEHOLDER_VALUES = frozenset({
 
 @asynccontextmanager
 async def lifespan(_app: "FastAPI"):
+    legacy_used, legacy_stale = settings.b2_legacy_env_usage()
+    if legacy_used:
+        logger.warning(
+            "Legacy B2 configuration variables are being used; add the "
+            "standard B2 variables before removing legacy aliases.",
+            extra={"config_keys": list(legacy_used)},
+        )
+    if legacy_stale:
+        logger.warning(
+            "Legacy B2 configuration variables are present but ignored "
+            "because standard variables are set or no longer needed.",
+            extra={"config_keys": list(legacy_stale)},
+        )
+
     missing = [
         env_name
         for attr, env_name in REQUIRED_B2_SETTINGS
@@ -109,6 +119,8 @@ class JSONFormatter(logging.Formatter):
             log_entry["event_id"] = record.event_id
         if hasattr(record, "target_lang"):
             log_entry["target_lang"] = record.target_lang
+        if hasattr(record, "config_keys"):
+            log_entry["config_keys"] = record.config_keys
         if record.exc_info and record.exc_info[1]:
             log_entry["exception"] = str(record.exc_info[1])
         return json.dumps(log_entry)
