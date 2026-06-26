@@ -51,6 +51,14 @@ The browser talks only to our API; the API bridges to OpenAI (one upstream `gpt-
 | `4001` | Session can't start — missing/invalid `OPENAI_API_KEY` or upstream failed to open |
 | `4002` | Invalid input — malformed event id / language, or language not offered |
 | `4003` | No active session for this event (not started or already ended) |
+| `4004` | Client detected an invalid server frame or unsafe audio playback condition and closed the socket. The close reason is `invalid-server-frame:<reason-code>`; reason codes are stable diagnostics such as `malformed-json`, `non-text-data`, `payload-too-large`, `audio-base64-invalid`, `audio-too-large`, or `audio-buffer-overflow`. Raw frame payloads are never included. |
+
+### Wire frame limits
+
+- JSON frames are capped at 256 KiB in the browser.
+- Caption payloads are capped at 16 KiB UTF-8 per frame. The backend chunks outgoing caption frames on UTF-8 boundaries before sending to speakers or attendees.
+- Audio payloads are capped at 96,000 decoded PCM bytes per frame. The backend chunks outgoing base64 PCM before sending to attendees.
+- Interim caption state is capped at 64 KiB per language in the browser. Overflow closes with `4004` / `invalid-server-frame:caption-buffer-overflow`.
 
 ## Flow
 
@@ -66,15 +74,24 @@ The browser talks only to our API; the API bridges to OpenAI (one upstream `gpt-
 - **No `OPENAI_API_KEY`** — `connect()` raises and the speaker socket closes with `4001`; the rest of the app stays usable. The API also logs a warning at startup.
 - **Speaker disconnects mid-event** — the broadcast tears down and the partial transcript is already persisted, so attendees who joined late still have a record.
 - **Attendee picks an unsupported language** — the socket closes with `4002`.
+- **Malformed server frames** — the speaker and attendee clients validate incoming JSON frames, ignore unknown additive frame types, show an error state for invalid known frames, and close with app code `4004` plus a low-cardinality diagnostic close reason instead of throwing in the browser.
+- **Audio-frame floods** — attendee playback caps scheduled translated audio at 10 seconds. A flood of individually valid audio frames closes with `4004` / `invalid-server-frame:audio-buffer-overflow` before allocating more decoded samples or `AudioBuffer`s.
+- **Caption-frame floods** — repeated valid interim caption frames close with `4004` / `invalid-server-frame:caption-buffer-overflow` once one language's interim buffer would exceed 64 KiB.
+- **Superseded starts/joins** — speaker starts and attendee joins use generation guards across microphone and audio-resume awaits; stale attempts close their resources and cannot overwrite the current socket.
 - **Single-instance only** — the session registry is in-memory; multi-instance needs shared state (see [RELIABILITY.md](../RELIABILITY.md)).
 
 ## Tests
 
 - `services/api/tests/test_realtime.py` — adapter event parsing (mocked websocket) + fan-out / source-dedup / persistence.
+- `services/api/tests/test_realtime_wire.py` — backend outgoing audio/caption frame chunking against the client wire limits.
 - `services/api/tests/test_structure.py::test_openai_only_in_repo` — OpenAI containment.
 - `services/api/tests/test_structure.py::test_no_websocket_business_logic` — `runtime/live.py` drives `service.realtime_session`, never `repo/`.
 - `apps/web/e2e/live-speaker-smoke.spec.ts` — speaker form renders.
 - `apps/web/e2e/attendee-language-pick.spec.ts` — attendee page renders.
+- `apps/web/e2e/realtime-invalid-frames.spec.ts` — browser-level malformed-frame handling for speaker and attendee sessions.
+- `apps/web/e2e/realtime-audio-flood.spec.ts` / `realtime-caption-flood.spec.ts` — flood handling for valid-but-excessive audio and interim caption frames.
+- `apps/web/e2e/realtime-frame-limits.spec.ts` — largest valid browser frame limits remain accepted.
+- `apps/web/e2e/realtime-start-races.spec.ts` — delayed speaker starts and listener joins cannot overwrite newer attempts.
 
 ## Related
 

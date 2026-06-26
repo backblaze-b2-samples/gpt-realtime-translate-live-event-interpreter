@@ -16,11 +16,12 @@ and never imports `repo/` (enforced by
 """
 
 import asyncio
+import base64
 import contextlib
 import json
 import logging
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from app.runtime.metrics import (
     record_attendee_joined,
@@ -34,6 +35,10 @@ from app.service.realtime_session import (
     get_session,
     listen_attendee,
     start_session,
+)
+from app.types.realtime_wire import (
+    MAX_WIRE_AUDIO_BASE64_CHARS,
+    MAX_WIRE_TEXT_PAYLOAD_BYTES,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,19 +56,68 @@ async def _close_with_reason(ws: WebSocket, code: int, reason: str) -> None:
     with contextlib.suppress(Exception):
         await ws.send_json({"type": "close", "code": code, "reason": reason})
     with contextlib.suppress(Exception):
-        await ws.close(code=status.WS_1011_INTERNAL_ERROR)
+        await ws.close(code=code)
 
 
-def _chunk_frame(chunk) -> dict:
+def _frame_for_payload(chunk, payload: str) -> dict:
     """Serialize a `RealtimeChunk` into the attendee/speaker wire frame."""
     return {
         "type": "audio" if chunk.kind == "audio" else "caption",
         "lang": chunk.lang,
-        "payload": chunk.payload,
+        "payload": payload,
         "start_ms": chunk.start_ms,
         "end_ms": chunk.end_ms,
         "is_final": chunk.is_final,
     }
+
+
+def _text_payload_chunks(payload: str) -> list[str]:
+    """Split text by UTF-8 bytes so each frame stays inside the wire contract."""
+    if payload == "":
+        return [payload]
+    chunks: list[str] = []
+    current: list[str] = []
+    current_bytes = 0
+    for char in payload:
+        char_bytes = len(char.encode("utf-8"))
+        if current and current_bytes + char_bytes > MAX_WIRE_TEXT_PAYLOAD_BYTES:
+            chunks.append("".join(current))
+            current = []
+            current_bytes = 0
+        current.append(char)
+        current_bytes += char_bytes
+    if current:
+        chunks.append("".join(current))
+    return chunks
+
+
+def _audio_payload_chunks(payload: str) -> list[str]:
+    """Split base64 PCM by decoded bytes so browser playback caps are meaningful."""
+    if not payload:
+        return []
+    chunks: list[str] = []
+    for start in range(0, len(payload), MAX_WIRE_AUDIO_BASE64_CHARS):
+        encoded = payload[start : start + MAX_WIRE_AUDIO_BASE64_CHARS]
+        padded = encoded + ("=" * (-len(encoded) % 4))
+        try:
+            decoded = base64.b64decode(padded, validate=True)
+        except Exception:
+            return []
+        if len(decoded) % 2:
+            decoded = decoded[:-1]
+        if decoded:
+            chunks.append(base64.b64encode(decoded).decode("ascii"))
+    return chunks
+
+
+def _chunk_frames(chunk) -> list[dict]:
+    """Serialize a `RealtimeChunk` into one or more bounded wire frames."""
+    payloads = (
+        _audio_payload_chunks(chunk.payload)
+        if chunk.kind == "audio"
+        else _text_payload_chunks(chunk.payload)
+    )
+    return [_frame_for_payload(chunk, payload) for payload in payloads]
 
 
 @router.websocket("/events/{event_id}/speaker")
@@ -156,7 +210,8 @@ async def _speaker_monitor(ws: WebSocket, broadcast: EventBroadcast) -> None:
         while True:
             try:
                 chunk = await asyncio.wait_for(queue.get(), timeout=2.0)
-                await ws.send_json(_chunk_frame(chunk))
+                for frame in _chunk_frames(chunk):
+                    await ws.send_json(frame)
             except TimeoutError:
                 pass
             if broadcast.attendee_count != last_count:
@@ -190,7 +245,8 @@ async def listen_socket(ws: WebSocket, event_id: str, lang: str = Query(...)):
     await ws.send_json({"type": "ready", "lang": lang})
     try:
         async for chunk in listen_attendee(event_id, lang):
-            await ws.send_json(_chunk_frame(chunk))
+            for frame in _chunk_frames(chunk):
+                await ws.send_json(frame)
     except WebSocketDisconnect:
         pass
     except Exception:
