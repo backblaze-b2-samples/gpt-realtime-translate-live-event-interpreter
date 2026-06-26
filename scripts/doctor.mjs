@@ -28,11 +28,10 @@ const REQUIRED_PYTHON_MINOR = 11; // 3.11+
 // .env.example. Keep in sync with services/api/main.py REQUIRED_B2_SETTINGS
 // and PLACEHOLDER_VALUES.
 const REQUIRED_B2_VARS = [
-  "B2_ENDPOINT",
-  "B2_REGION",
-  "B2_KEY_ID",
+  "B2_APPLICATION_KEY_ID",
   "B2_APPLICATION_KEY",
   "B2_BUCKET_NAME",
+  "B2_REGION",
 ];
 // OpenAI Realtime is required for the live-interpretation feature. We surface
 // the same preflight failure shape as the B2 keys — the rest of the app
@@ -40,9 +39,8 @@ const REQUIRED_B2_VARS = [
 // is the moment to call out the gap loudly so users don't hit it mid-demo.
 const REQUIRED_OPENAI_VARS = ["OPENAI_API_KEY"];
 const PLACEHOLDERS = new Set([
-  "your_b2_endpoint",
   "your_b2_region",
-  "your_key_id",
+  "your_application_key_id",
   "your_application_key",
   "your-bucket-name",
   "your_openai_api_key",

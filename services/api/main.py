@@ -34,10 +34,9 @@ from app.runtime import (  # noqa: E402
 # raises during test collection. We instead fail fast at server startup
 # with a human-readable message.
 REQUIRED_B2_SETTINGS = (
-    ("b2_key_id", "B2_KEY_ID"),
+    ("b2_application_key_id", "B2_APPLICATION_KEY_ID"),
     ("b2_application_key", "B2_APPLICATION_KEY"),
     ("b2_bucket_name", "B2_BUCKET_NAME"),
-    ("b2_endpoint", "B2_ENDPOINT"),
     ("b2_region", "B2_REGION"),
 )
 
@@ -45,9 +44,8 @@ REQUIRED_B2_SETTINGS = (
 # the example and didn't edit it, Settings will pass the "non-empty"
 # check above but every B2 call will still 403. Catch that here.
 PLACEHOLDER_VALUES = frozenset({
-    "your_b2_endpoint",
     "your_b2_region",
-    "your_key_id",
+    "your_application_key_id",
     "your_application_key",
     "your-bucket-name",
     "your_openai_api_key",

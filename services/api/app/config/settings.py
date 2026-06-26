@@ -11,12 +11,11 @@ _ENV_FILE = Path(__file__).resolve().parents[4] / ".env"
 
 
 class Settings(BaseSettings):
-    b2_endpoint: str = ""
+    b2_application_key_id: str = ""
     b2_region: str = ""
-    b2_key_id: str = ""
     b2_application_key: str = ""
     b2_bucket_name: str = ""
-    b2_public_url: str = ""
+    b2_public_url_base: str = ""
 
     # OpenAI Realtime — required to drive live interpretation. We tolerate empty
     # defaults so `Settings()` instantiation never raises during test collection;
@@ -55,6 +54,12 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.api_cors_origins.split(",")]
+
+    @property
+    def b2_endpoint(self) -> str:
+        if not self.b2_region:
+            return ""
+        return f"https://s3.{self.b2_region}.backblazeb2.com"
 
     @property
     def default_target_language_list(self) -> list[str]:

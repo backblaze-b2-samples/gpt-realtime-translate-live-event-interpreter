@@ -6,7 +6,7 @@ Security principles and implementation for the gpt-realtime-translate-live-event
 ## Trust Boundaries
 
 - **Frontend -> API**: CORS-restricted to configured origins, scoped to `GET/POST/DELETE/OPTIONS`
-- **API -> B2**: Authenticated via `B2_KEY_ID` + `B2_APPLICATION_KEY`, signature v4
+- **API -> B2**: Authenticated via `B2_APPLICATION_KEY_ID` + `B2_APPLICATION_KEY`, signature v4
 - **API -> OpenAI**: Authenticated via `OPENAI_API_KEY`; the key never leaves the backend
 - **Client -> B2**: Presigned URLs for inline playback (10-min expiry) and attachment download (10-min expiry, `Content-Disposition: attachment`)
 - **WebSocket connections**: Speaker socket carries a server-issued session token; attendee sockets validate event id + language before any chunk is forwarded
