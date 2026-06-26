@@ -36,20 +36,29 @@ def setting_attr_for_env(env_name: str) -> str:
     return env_name.lower()
 
 
-def _configured_env_names(env_file: Path | None) -> set[str]:
+def _normalize_env_files(env_file) -> tuple[Path, ...]:
+    if env_file is None:
+        return ()
+    if isinstance(env_file, str | os.PathLike):
+        return (Path(env_file),)
+    return tuple(Path(path) for path in env_file if path)
+
+
+def _configured_env_names(env_files: tuple[Path, ...]) -> set[str]:
     names: set[str] = set()
-    if env_file and env_file.exists():
-        names.update(
-            key
-            for key, value in dotenv_values(env_file).items()
-            if key and value
-        )
+    for env_file in env_files:
+        if env_file.exists():
+            names.update(
+                key
+                for key, value in dotenv_values(env_file).items()
+                if key and value
+            )
     names.update(key for key, value in os.environ.items() if value)
     return names
 
 
 class Settings(BaseSettings):
-    _effective_env_file: Path | None = PrivateAttr(default=_ENV_FILE)
+    _effective_env_files: tuple[Path, ...] = PrivateAttr(default=(_ENV_FILE,))
 
     b2_application_key_id: str = Field(
         "",
@@ -112,7 +121,7 @@ class Settings(BaseSettings):
     def __init__(self, **values):
         env_file = values.get("_env_file", _ENV_FILE)
         super().__init__(**values)
-        self._effective_env_file = None if env_file is None else Path(env_file)
+        self._effective_env_files = _normalize_env_files(env_file)
 
     @field_validator("b2_region")
     @classmethod
@@ -137,7 +146,7 @@ class Settings(BaseSettings):
         return f"https://s3.{self.b2_region}.backblazeb2.com"
 
     def b2_legacy_env_usage(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
-        configured = _configured_env_names(self._effective_env_file)
+        configured = _configured_env_names(self._effective_env_files)
         used: list[str] = []
         stale: list[str] = []
         for legacy_name, standard_name in B2_LEGACY_ALIASES.items():
