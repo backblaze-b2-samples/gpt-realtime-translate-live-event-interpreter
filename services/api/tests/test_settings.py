@@ -97,6 +97,32 @@ def test_b2_settings_prefer_standard_env_names(monkeypatch):
     )
 
 
+def test_b2_settings_ignore_empty_standard_values_for_legacy_fallback(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "B2_APPLICATION_KEY_ID=",
+                "B2_KEY_ID=legacy-key-id",
+                "B2_APPLICATION_KEY=legacy-application-key",
+                "B2_BUCKET_NAME=legacy-bucket",
+                "B2_REGION=us-test-001",
+                "B2_PUBLIC_URL_BASE=",
+                "B2_PUBLIC_URL=https://legacy.example/bucket",
+            ]
+        )
+    )
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.b2_application_key_id == "legacy-key-id"
+    assert settings.b2_public_url_base == "https://legacy.example/bucket"
+    assert settings.b2_legacy_env_usage() == (
+        ("B2_KEY_ID", "B2_PUBLIC_URL"),
+        (),
+    )
+
+
 def test_b2_settings_ignore_stale_legacy_dotenv_keys(tmp_path):
     env_file = tmp_path / ".env"
     env_file.write_text(
