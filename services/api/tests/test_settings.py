@@ -100,6 +100,18 @@ def test_b2_settings_ignore_stale_legacy_dotenv_keys(tmp_path):
     assert settings.b2_application_key_id == "standard-key-id"
     assert settings.b2_endpoint == "https://s3.us-test-001.backblazeb2.com"
     assert settings.b2_public_url_base == "https://cdn.example/bucket"
+    assert settings.b2_legacy_env_usage() == (
+        (),
+        ("B2_ENDPOINT", "B2_KEY_ID", "B2_PUBLIC_URL"),
+    )
+
+
+def test_b2_legacy_usage_skips_dotenv_when_disabled(monkeypatch):
+    clear_b2_env(monkeypatch)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.b2_legacy_env_usage() == ((), ())
 
 
 @pytest.mark.parametrize(

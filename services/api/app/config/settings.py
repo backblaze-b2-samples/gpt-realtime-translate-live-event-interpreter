@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from dotenv import dotenv_values
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, PrivateAttr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Anchor the env file to the repo root so settings load identically no matter
@@ -36,12 +36,12 @@ def setting_attr_for_env(env_name: str) -> str:
     return env_name.lower()
 
 
-def _configured_env_names() -> set[str]:
+def _configured_env_names(env_file: Path | None) -> set[str]:
     names: set[str] = set()
-    if _ENV_FILE.exists():
+    if env_file and env_file.exists():
         names.update(
             key
-            for key, value in dotenv_values(_ENV_FILE).items()
+            for key, value in dotenv_values(env_file).items()
             if key and value
         )
     names.update(key for key, value in os.environ.items() if value)
@@ -49,6 +49,8 @@ def _configured_env_names() -> set[str]:
 
 
 class Settings(BaseSettings):
+    _effective_env_file: Path | None = PrivateAttr(default=_ENV_FILE)
+
     b2_application_key_id: str = Field(
         "",
         validation_alias=AliasChoices(
@@ -106,6 +108,11 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )
 
+    def __init__(self, **values):
+        env_file = values.get("_env_file", _ENV_FILE)
+        super().__init__(**values)
+        self._effective_env_file = None if env_file is None else Path(env_file)
+
     @field_validator("b2_region")
     @classmethod
     def validate_b2_region(cls, value: str) -> str:
@@ -129,7 +136,7 @@ class Settings(BaseSettings):
         return f"https://s3.{self.b2_region}.backblazeb2.com"
 
     def b2_legacy_env_usage(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
-        configured = _configured_env_names()
+        configured = _configured_env_names(self._effective_env_file)
         used: list[str] = []
         stale: list[str] = []
         for legacy_name, standard_name in B2_LEGACY_ALIASES.items():
