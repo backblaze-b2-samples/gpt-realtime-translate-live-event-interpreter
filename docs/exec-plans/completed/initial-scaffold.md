@@ -1,6 +1,10 @@
 # Scaffold Plan — `gpt-realtime-translate-live-event-interpreter`
 
-**Source-kit override:** The user instructed us to use **`ai-audio-starter-kit`** as the template instead of the default `vibe-coding-starter-kit`. The fresh clone lives under `.claude/scratch/audio-starter-kit/` and is the sole source of truth for all keep/trim/add decisions below. The builder and reviewer subagents must ignore the sibling `../ai-audio-starter-kit` checkout entirely.
+**Source-kit override:** The user instructed us to use **`ai-audio-starter-kit`** as the template instead of the default `vibe-coding-starter-kit`. The fresh clone lives at `.claude/scratch/aask-dea55654-f9d9-4e99-90c2-3f585d4d9b56/` and is the sole source of truth for all keep/trim/add decisions below. The builder and reviewer subagents must ignore the sibling `../ai-audio-starter-kit` checkout entirely.
+
+> Post-scaffold note (issue #3): the B2 env-name contract changed after this
+> scaffold was completed. See `docs/exec-plans/completed/issue-3-b2-standards.md`
+> for the migration record.
 
 **Source issue:** `backblaze-labs/demand-side-ai#174`
 
@@ -18,14 +22,14 @@ It is **distinct** from the existing video-dubbing sample card: this is *live* i
 
 ## 2. Architecture delta from `ai-audio-starter-kit`
 
-Source: `.claude/scratch/audio-starter-kit/`. The starter kit is the ceiling — strip what this app doesn't need; only *add* where the live-translation domain genuinely demands new surface.
+Source: `.claude/scratch/aask-dea55654-f9d9-4e99-90c2-3f585d4d9b56/`. The starter kit is the ceiling — strip what this app doesn't need; only *add* where the live-translation domain genuinely demands new surface.
 
 ### 2a. KEEP (as-is, or with content-only rebranding)
 
 - **Backend layering** — `types → config → repo → service → runtime`; structural tests in `services/api/tests/test_structure.py`. Untouched.
 - **`boto3` containment** — only in `repo/`. Add an *analogous* containment rule for the OpenAI SDK (see §2c).
 - **B2 standards** — `boto3.client("s3", …)` with `Config(user_agent_extra="b2ai-gpt-realtime-translate-live-event-interpreter")`. S3-compatible API only. No `b2-native`.
-- **`.env.example` schema** — keep the standard key names `B2_APPLICATION_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_NAME`, `B2_REGION`, plus optional `B2_PUBLIC_URL_BASE`. **Add** OpenAI keys (see §2c).
+- **`.env.example` schema** — keep the exact key names `B2_ENDPOINT`, `B2_REGION`, `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_NAME`, plus optional `B2_PUBLIC_URL`. (These are the keys the b2-sample-builder verifies.) **Add** OpenAI keys (see §2c).
 - **Frontend data layer** — TanStack Query hooks in `apps/web/src/lib/queries.ts`; every API call flows through `lib/api-client.ts`. No bare `useEffect + fetch`.
 - **shadcn/ui** — `apps/web/src/components/ui/` is generated; never modified.
 - **`/files` route — full B2 bucket explorer** — **NON-NEGOTIABLE KEEP**. Stays as the ops-style "see everything in the bucket" view, last item in nav.
@@ -54,7 +58,7 @@ Source: `.claude/scratch/audio-starter-kit/`. The starter kit is the ceiling —
 - **`docs/features/audio-library.md`** — DELETED (replaced by `event-archive.md`).
 - **`b2_audio.py` audio-prefix repo helpers** — REPLACED by `b2_events.py` events-prefix helpers (same shape: list-by-prefix, parallel HEAD, validated key regex).
 - **`tmp/audio-samples/`** seed directory — REMOVE; not relevant (sample audio is generated live, not pre-seeded).
-- **`B2_PUBLIC_URL_BASE` direct-rendering hint in `.env.example`** — **KEEP**, but its scope narrows: applies to source audio + translated audio. No change to behavior.
+- **`B2_PUBLIC_URL` direct-rendering hint in `.env.example`** — **KEEP**, but its scope narrows: applies to source audio + translated audio. No change to behavior.
 
 ### 2c. ADD (new for this sample)
 
@@ -212,7 +216,7 @@ The issue listed two open questions; this plan resolves both:
 
 ## Compliance pre-check against `b2-sample-builder` step 6
 
-- `.env.example` includes the standard keys: `B2_APPLICATION_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_NAME`, `B2_REGION`, `B2_PUBLIC_URL_BASE`. ✅
+- `.env.example` includes the five required keys: `B2_ENDPOINT`, `B2_REGION`, `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_NAME`. ✅
 - Every `boto3.client("s3", …)` will set `user_agent_extra="b2ai-gpt-realtime-translate-live-event-interpreter"`. ✅
 - Backblaze.com links carry `utm_content=b2ai-gpt-realtime-translate-live-event-interpreter`. ✅
 - No `b2-native` usage. ✅
@@ -223,7 +227,7 @@ The issue listed two open questions; this plan resolves both:
 
 Both subagents' definitions hard-code `vibe-coding-starter-kit` as the source repo and reference `../CLAUDE.md` as the parent. For this run, the orchestrator must explicitly tell each subagent:
 
-1. **Source-tree path** is `.claude/scratch/audio-starter-kit/` (the `ai-audio-starter-kit` clone), **not** any `vibe-coding-starter-kit` checkout and **not** the sibling `../ai-audio-starter-kit` working copy.
+1. **Source-tree path** is `.claude/scratch/aask-dea55654-f9d9-4e99-90c2-3f585d4d9b56/` (the `ai-audio-starter-kit` clone), **not** any `vibe-coding-starter-kit` checkout and **not** the sibling `../ai-audio-starter-kit` working copy.
 2. **Initial-commit message** should read `Initial scaffold for gpt-realtime-translate-live-event-interpreter (from ai-audio-starter-kit)` — substitute the source kit name accordingly.
 3. **Parent standards** — the sampleapps workstream has no `CLAUDE.md` at `../CLAUDE.md`. The authoritative parent standards live at `/Users/epavez/Documents/demand-side-ai/CLAUDE.md` (workstream parent) and in the b2-sample-builder agent's own step 6 checklist. Reviewer should treat the agent definition's checklist as the binding standard.
 4. **Rename source string** — when the builder applies the rename table, it is rewriting from `ai-audio-starter-kit` → `gpt-realtime-translate-live-event-interpreter`, **not** from `vibe-coding-starter-kit`. The agent's default search strings must be substituted.

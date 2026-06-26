@@ -33,6 +33,18 @@ Set these on the API service:
 | `OPENAI_REALTIME_MODEL` | Optional override — defaults to `gpt-realtime-translate` |
 | `API_CORS_ORIGINS` | Your web service URL (e.g., `https://web-production-xxx.up.railway.app`) |
 
+### Rolling B2 Env Rename
+
+For deployments that still have legacy B2 variables, use an expand-contract
+sequence:
+
+1. Add `B2_APPLICATION_KEY_ID` and `B2_PUBLIC_URL_BASE` alongside existing
+   legacy variables.
+2. Deploy the compatible API code that accepts both old and new names.
+3. Confirm the API no longer logs legacy-in-use warnings.
+4. Remove `B2_KEY_ID`, `B2_PUBLIC_URL`, and `B2_ENDPOINT` after all old
+   instances have drained.
+
 Set this on the Web service:
 
 | Variable | Value |
