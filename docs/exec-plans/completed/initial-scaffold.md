@@ -4,7 +4,8 @@
 
 > Post-scaffold note (issue #3): the B2 env-name contract changed after this
 > scaffold was completed. See `docs/exec-plans/completed/issue-3-b2-standards.md`
-> for the migration record.
+> for the migration record. Any legacy B2 env names below are historical
+> scaffold context and are superseded by the issue #3 migration.
 
 **Source issue:** `backblaze-labs/demand-side-ai#174`
 
