@@ -62,6 +62,25 @@ def test_b2_settings_accept_legacy_env_names(monkeypatch):
     )
 
 
+def test_startup_placeholder_check_catches_legacy_key_id(monkeypatch):
+    from main import PLACEHOLDER_VALUES, REQUIRED_B2_SETTINGS
+
+    clear_b2_env(monkeypatch)
+    monkeypatch.setenv("B2_KEY_ID", "your_key_id")
+    monkeypatch.setenv("B2_APPLICATION_KEY", "standard-application-key")
+    monkeypatch.setenv("B2_BUCKET_NAME", "standard-bucket")
+    monkeypatch.setenv("B2_REGION", "us-test-001")
+    settings = Settings(_env_file=None)
+
+    placeholders = [
+        env_name
+        for attr, env_name in REQUIRED_B2_SETTINGS
+        if getattr(settings, attr) in PLACEHOLDER_VALUES
+    ]
+
+    assert placeholders == ["B2_APPLICATION_KEY_ID"]
+
+
 def test_b2_settings_prefer_standard_env_names(monkeypatch):
     clear_b2_env(monkeypatch)
     set_standard_b2_env(monkeypatch)

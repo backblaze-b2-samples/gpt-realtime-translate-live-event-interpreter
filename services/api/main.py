@@ -43,6 +43,7 @@ REQUIRED_B2_SETTINGS = tuple(
 PLACEHOLDER_VALUES = frozenset({
     "your_b2_region",
     "your_application_key_id",
+    "your_key_id",
     "your_application_key",
     "your-bucket-name",
     "your_openai_api_key",
