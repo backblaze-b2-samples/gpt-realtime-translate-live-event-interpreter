@@ -16,7 +16,7 @@
     "test:e2e": "pnpm --filter @gpt-realtime-translate-live-event-interpreter/web exec playwright test"
   },
   "devDependencies": {
-    "concurrently": "^10.0.5"
+    "concurrently": "^9.2.1"
   },
   "pnpm": {
     "overrides": {
@@ -43,7 +43,7 @@
     }
   },
   "engines": {
-    "node": ">=20",
+    "node": ">=20.18.1",
     "pnpm": ">=9"
   }
 }
