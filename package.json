@@ -16,10 +16,34 @@
     "test:e2e": "pnpm --filter @gpt-realtime-translate-live-event-interpreter/web exec playwright test"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.2.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "@babel/core": "7.29.7",
+      "@hono/node-server": "1.19.15",
+      "@modelcontextprotocol/sdk": "1.30.0",
+      "@modelcontextprotocol/sdk>ajv": "8.20.0",
+      "body-parser": "2.3.0",
+      "express-rate-limit": "8.2.2",
+      "fast-uri": "3.1.5",
+      "flatted": "3.4.2",
+      "fdir>picomatch": "4.0.5",
+      "hono": "4.12.34",
+      "ip-address": "10.3.1",
+      "js-yaml": "4.3.1",
+      "lodash": "4.18.1",
+      "minimatch": "10.2.5",
+      "micromatch>picomatch": "2.3.2",
+      "path-to-regexp": "8.4.2",
+      "picomatch": "4.0.5",
+      "postcss": "8.5.23",
+      "qs": "6.15.2",
+      "shell-quote": "1.9.0"
+    }
   },
   "engines": {
-    "node": ">=20",
+    "node": ">=20.18.1",
     "pnpm": ">=9"
   }
 }
