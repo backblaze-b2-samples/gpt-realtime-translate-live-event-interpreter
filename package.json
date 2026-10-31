@@ -24,7 +24,7 @@
       "@hono/node-server": "1.19.15",
       "@modelcontextprotocol/sdk": "1.30.0",
       "@modelcontextprotocol/sdk>ajv": "8.20.0",
-      "body-parser": "2.3.0",
+      "body-parser": "2.4.0",
       "express-rate-limit": "8.2.2",
       "fast-uri": "3.1.5",
       "flatted": "3.4.2",
